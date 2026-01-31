@@ -42,7 +42,7 @@ app.use(express.json());
 /* ---------------- ROUTES ---------------- */
 
 app.get('/', (_req, res) => {
-  res.send('✅ QuickGPT API is live');
+  res.send('✅ Prompto API is live');
 });
 
 app.use('/api/user', userRouter);
