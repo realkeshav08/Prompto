@@ -1,0 +1,79 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300..700&display=swap');
+@import "tailwindcss";
+
+/* ---------------- DARK MODE VARIANT ---------------- */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------- GLOBAL FONT ---------------- */
+* {
+  font-family: "Outfit", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* ---------------- THEME TOKENS ---------------- */
+@theme {
+  /* App surfaces */
+  --color-bg: #0d1117;
+  --color-panel: #161b22;
+  --color-border: #30363d;
+
+  /* Accent (used sparingly) */
+  --color-accent: #7aa2f7;
+
+  /* Text */
+  --color-text: #e5e7eb;
+  --color-muted: #9ca3af;
+}
+
+/* ---------------- BASE ---------------- */
+html,
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* ---------------- SCROLLBAR (SUBTLE, DESKTOP-FRIENDLY) ---------------- */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3b4451;
+}
+
+/* ---------------- MARKDOWN RESET ---------------- */
+/* Prevent Tailwind from breaking Markdown layout */
+.reset-tw :not(pre):not(code) {
+  all: revert;
+}
+
+/* ---------------- CODE BLOCKS ---------------- */
+pre {
+  background: #020617;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+}
+
+code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.85rem;
+}
+
+/* ---------------- LOADER DOTS ---------------- */
+.loader div:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.loader div:nth-child(3) {
+  animation-delay: 0.3s;
+}
