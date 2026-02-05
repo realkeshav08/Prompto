@@ -5,6 +5,7 @@ import axios from 'axios'
 import toast from 'react-hot-toast'
 
 axios.defaults.baseURL = import.meta.env.VITE_SERVER_URL
+console.log("API URL:", import.meta.env.VITE_SERVER_URL);
 
 const AppContext = createContext()
 
@@ -29,13 +30,20 @@ export const AppContextProvider = ({ children }) => {
   /* ---------------- AXIOS INTERCEPTOR ---------------- */
 
   useEffect(() => {
-    axios.interceptors.request.use(config => {
+    const interceptor = axios.interceptors.request.use(config => {
       if (token) {
-        config.headers.Authorization = token
+        config.headers.Authorization = `Bearer ${token}`
+      } else {
+        delete config.headers.Authorization
       }
       return config
     })
+
+    return () => {
+      axios.interceptors.request.eject(interceptor)
+    }
   }, [token])
+
 
   /* ---------------- USER ---------------- */
 
@@ -89,9 +97,14 @@ export const AppContextProvider = ({ children }) => {
         return
       }
 
-      navigate('/')
-      await axios.get('/api/chat/create')
-      await fetchUsersChats()
+      const { data } = await axios.get('/api/chat/create')
+
+      if (data.success) {
+        setChats(prev => [data.chat, ...prev])
+        setSelectedChat(data.chat)
+        navigate('/')
+        if (!silent) toast.success('New session started')
+      }
     } catch (err) {
       toast.error(err.message)
     }

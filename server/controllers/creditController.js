@@ -119,7 +119,7 @@ export const purchasePlan = async (req, res) => {
       cancel_url: `${clientURL}/credits`,
       metadata: {
         transactionId: transaction._id.toString(),
-        app: 'quickgpt',
+        app: 'prompto',
       },
       expires_at:
         Math.floor(Date.now() / 1000) + 30 * 60,

@@ -19,22 +19,29 @@ const Loading = () => {
     <div className="
       h-screen w-screen
       flex flex-col items-center justify-center
-      bg-[#0d1117]
-      text-gray-300
+      bg-bg relative overflow-hidden
+      text-text
     ">
-      {/* Spinner */}
-      <div className="
-        w-10 h-10 mb-4
-        border-2 border-[#30363d]
-        border-t-[#7aa2f7]
-        rounded-full
-        animate-spin
-      " />
+      {/* Aesthetic Background Elements */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-accent/5 blur-[120px] rounded-full -z-10" />
 
-      {/* Optional status text */}
-      <p className="text-sm text-gray-500 tracking-wide">
-        Initializing workspace…
-      </p>
+      {/* Modern Spinner Container */}
+      <div className="relative mb-8">
+        <div className="w-16 h-16 border-4 border-accent-soft border-t-accent rounded-full animate-spin shadow-lg" />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-2 h-2 bg-accent rounded-full animate-ping" />
+        </div>
+      </div>
+
+      {/* Progress Text */}
+      <div className="text-center animate-pulse">
+        <p className="text-sm font-bold uppercase tracking-[0.3em] text-accent mb-2">
+          Prompto v2.0
+        </p>
+        <p className="text-[11px] text-muted font-black uppercase tracking-widest opacity-60">
+          Initializing secure environment…
+        </p>
+      </div>
     </div>
   )
 }

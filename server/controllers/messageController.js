@@ -1,8 +1,8 @@
-import axios from 'axios';
-import Chat from '../models/Chat.js';
-import User from '../models/User.js';
-import imagekit from '../configs/imageKit.js';
-import openai from '../configs/openai.js';
+import axios from "axios";
+import Chat from "../models/Chat.js";
+import User from "../models/User.js";
+import imagekit from "../configs/imageKit.js";
+import ai from "../configs/ai.js";
 
 /* ---------------- TEXT MESSAGE ---------------- */
 
@@ -14,7 +14,7 @@ export const textMessageController = async (req, res) => {
     if (!chatId || !prompt?.trim()) {
       return res.status(400).json({
         success: false,
-        message: 'Chat ID and prompt are required',
+        message: "Chat ID and prompt are required",
       });
     }
 
@@ -22,9 +22,9 @@ export const textMessageController = async (req, res) => {
     const user = await User.findOneAndUpdate(
       { _id: userId, credits: { $gte: 1 } },
       { $inc: { credits: -1 } },
-      { new: true }
+      { new: true },
     );
-
+    console.log("User after credit deduction:", user);
     if (!user) {
       return res.status(403).json({
         success: false,
@@ -36,27 +36,67 @@ export const textMessageController = async (req, res) => {
     if (!chat) {
       return res.status(404).json({
         success: false,
-        message: 'Chat not found',
+        message: "Chat not found",
       });
     }
 
     /* ---- Save user message ---- */
     chat.messages.push({
-      role: 'user',
+      role: "user",
       content: prompt,
       timestamp: Date.now(),
       isImage: false,
     });
-
+    console.log(chat.messages);
     /* ---- AI call ---- */
-    const { choices } = await openai.chat.completions.create({
-      model: 'gemini-2.0-flash',
-      messages: [{ role: 'user', content: prompt }],
-    });
+    let aiContent;
+    try {
+      console.log(prompt);
+      const systemInstruction = "You are Prompto, a friendly personal assistant. do NOT mention your model or the word 'gemini'. Keep responses concise and helpful.";
+      const aiResponse = await ai.models.generateContent({
+        model: "gemini-2.5-flash-lite",
+        contents: `${systemInstruction}\n\n${prompt}`,
+      });
+
+      // Assign to outer variable (fix shadowing bug) and support multiple shapes
+      aiContent = aiResponse?.text || aiResponse?.output_text ||
+        (aiResponse?.output ? aiResponse.output.map(o => (o.content || [])
+          .map(c => c.text || '')
+          .join('')).join('\n') : undefined);
+
+      console.log("AI response:", aiResponse);
+
+      if (!aiContent || !String(aiContent).trim()) {
+        // Refund credit if AI returned no content
+        await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } });
+        console.error("AI returned unexpected response:", aiResponse);
+        return res.status(500).json({
+          success: false,
+          message: "AI returned no content",
+        });
+      }
+
+      aiContent = String(aiContent).trim();
+    } catch (err) {
+      // Refund credit on failure
+      try {
+        await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } });
+      } catch (refundErr) {
+        console.error(
+          "Failed to refund credits after AI error:",
+          refundErr,
+        );
+      }
+      console.error("AI error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to process message",
+      });
+    }
 
     const reply = {
-      role: 'assistant',
-      content: choices[0].message.content,
+      role: "assistant",
+      content: aiContent,
       timestamp: Date.now(),
       isImage: false,
     };
@@ -68,12 +108,11 @@ export const textMessageController = async (req, res) => {
       success: true,
       reply,
     });
-
   } catch (err) {
-    console.error('Text message error:', err.message);
+    console.error("Text message error:", err.message);
     return res.status(500).json({
       success: false,
-      message: 'Failed to process message',
+      message: "Failed to process message",
     });
   }
 };
@@ -88,7 +127,7 @@ export const imageMessageController = async (req, res) => {
     if (!chatId || !prompt?.trim()) {
       return res.status(400).json({
         success: false,
-        message: 'Chat ID and prompt are required',
+        message: "Chat ID and prompt are required",
       });
     }
 
@@ -96,7 +135,7 @@ export const imageMessageController = async (req, res) => {
     const user = await User.findOneAndUpdate(
       { _id: userId, credits: { $gte: 2 } },
       { $inc: { credits: -2 } },
-      { new: true }
+      { new: true },
     );
 
     if (!user) {
@@ -110,13 +149,13 @@ export const imageMessageController = async (req, res) => {
     if (!chat) {
       return res.status(404).json({
         success: false,
-        message: 'Chat not found',
+        message: "Chat not found",
       });
     }
 
     /* ---- Save user prompt ---- */
     chat.messages.push({
-      role: 'user',
+      role: "user",
       content: prompt,
       timestamp: Date.now(),
       isImage: false,
@@ -130,22 +169,22 @@ export const imageMessageController = async (req, res) => {
       `/quickgpt/${Date.now()}.png?tr=w-800,h-800`;
 
     const aiImage = await axios.get(imageUrl, {
-      responseType: 'arraybuffer',
+      responseType: "arraybuffer",
       timeout: 20000,
     });
 
-    const base64Image = `data:image/png;base64,${Buffer
-      .from(aiImage.data)
-      .toString('base64')}`;
+    const base64Image = `data:image/png;base64,${Buffer.from(
+      aiImage.data,
+    ).toString("base64")}`;
 
     const upload = await imagekit.upload({
       file: base64Image,
       fileName: `${Date.now()}.png`,
-      folder: 'quickgpt',
+      folder: "quickgpt",
     });
 
     const reply = {
-      role: 'assistant',
+      role: "assistant",
       content: upload.url,
       timestamp: Date.now(),
       isImage: true,
@@ -159,12 +198,11 @@ export const imageMessageController = async (req, res) => {
       success: true,
       reply,
     });
-
   } catch (err) {
-    console.error('Image message error:', err.message);
+    console.error("Image message error:", err.message);
     return res.status(500).json({
       success: false,
-      message: 'Failed to generate image',
+      message: "Failed to generate image",
     });
   }
 };

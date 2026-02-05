@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useAppContext } from '../context/AppContext'
 import toast from 'react-hot-toast'
+import { assets } from '../assets/assets'
 
 const Login = () => {
   const [state, setState] = useState('login')
@@ -38,125 +39,152 @@ const Login = () => {
     <div className="
       min-h-screen w-full
       flex items-center justify-center
-      bg-[#0d1117]
-      text-gray-200
+      bg-bg relative overflow-hidden
+      text-text px-6
     ">
+      {/* Dynamic Background Elements */}
+      <div className="absolute top-[-10%] right-[-10%] w-[600px] h-[600px] bg-accent/10 blur-[130px] rounded-full" />
+      <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-accent/5 blur-[100px] rounded-full" />
+
       <form
         onSubmit={handleSubmit}
         className="
-          w-[360px]
-          bg-[#161b22]
-          border border-[#30363d]
-          rounded-md
-          p-8
+          w-full max-w-[420px]
+          glass rounded-[2.5rem]
+          p-10 md:p-12 shadow-premium
+          animate-fade-in relative z-10
         "
       >
-        {/* Title */}
-        <h1 className="text-xl font-semibold text-center mb-6">
-          {state === 'login' ? 'Sign in' : 'Create account'}
-        </h1>
+        {/* Brand/Logo */}
+        <div className="flex flex-col items-center mb-10">
+          <div className="w-16 h-16 bg-accent rounded-3xl flex items-center justify-center shadow-xl mb-6 hover:rotate-12 transition-transform duration-500">
+            <img src={assets.logo} className="w-10 dark:invert-0 invert" alt="logo" />
+          </div>
+          <h1 className="text-4xl font-black tracking-tight text-center">
+            {state === 'login' ? (
+              <>Welcome <span className="text-gradient">Back</span></>
+            ) : (
+              <>Join the <span className="text-gradient">Future</span></>
+            )}
+          </h1>
+          <p className="text-muted text-sm font-bold mt-3 opacity-80 uppercase tracking-widest text-center px-4">
+            {state === 'login' ? 'Continue your creative journey' : 'Start your neural odyssey today'}
+          </p>
+        </div>
 
-        {/* Name */}
-        {state === 'register' && (
-          <div className="mb-4">
-            <label className="block text-xs mb-1 text-gray-400">
-              Name
+        {/* Input Fields Container */}
+        <div className="space-y-5">
+          {state === 'register' && (
+            <div className="space-y-2">
+              <label className="block text-[11px] font-black uppercase tracking-widest text-muted ml-1">
+                Full Name
+              </label>
+              <input
+                value={name}
+                onChange={e => setName(e.target.value)}
+                type="text"
+                required
+                placeholder="Enter your name"
+                className="
+                  w-full px-5 py-4
+                  bg-accent-soft/30
+                  border border-border/50
+                  rounded-2xl
+                  text-sm font-medium
+                  outline-none
+                  focus:border-accent/40 focus:ring-4 focus:ring-accent/5
+                  transition-all
+                "
+              />
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <label className="block text-[11px] font-black uppercase tracking-widest text-muted ml-1">
+              Email Address
             </label>
             <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              type="text"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              type="email"
               required
+              placeholder="name@example.com"
               className="
-                w-full px-3 py-2
-                bg-[#0d1117]
-                border border-[#30363d]
-                rounded-md
-                text-sm
+                w-full px-5 py-4
+                bg-accent-soft/30
+                border border-border/50
+                rounded-2xl
+                text-sm font-medium
                 outline-none
-                focus:border-[#7aa2f7]
+                focus:border-accent/40 focus:ring-4 focus:ring-accent/5
+                transition-all
               "
             />
           </div>
-        )}
 
-        {/* Email */}
-        <div className="mb-4">
-          <label className="block text-xs mb-1 text-gray-400">
-            Email
-          </label>
-          <input
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            type="email"
-            required
-            className="
-              w-full px-3 py-2
-              bg-[#0d1117]
-              border border-[#30363d]
-              rounded-md
-              text-sm
-              outline-none
-              focus:border-[#7aa2f7]
-            "
-          />
+          <div className="space-y-2">
+            <label className="block text-[11px] font-black uppercase tracking-widest text-muted ml-1">
+              Secret Password
+            </label>
+            <input
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              type="password"
+              required
+              placeholder="••••••••"
+              className="
+                w-full px-5 py-4
+                bg-accent-soft/30
+                border border-border/50
+                rounded-2xl
+                text-sm font-medium
+                outline-none
+                focus:border-accent/40 focus:ring-4 focus:ring-accent/5
+                transition-all
+              "
+            />
+          </div>
         </div>
 
-        {/* Password */}
-        <div className="mb-6">
-          <label className="block text-xs mb-1 text-gray-400">
-            Password
-          </label>
-          <input
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            type="password"
-            required
-            className="
-              w-full px-3 py-2
-              bg-[#0d1117]
-              border border-[#30363d]
-              rounded-md
-              text-sm
-              outline-none
-              focus:border-[#7aa2f7]
-            "
-          />
-        </div>
-
-        {/* Switch mode */}
-        <p className="text-xs text-gray-500 mb-5 text-center">
+        {/* Switch mode context */}
+        <p className="text-xs text-muted mt-8 mb-6 text-center font-medium">
           {state === 'register'
-            ? 'Already have an account? '
-            : 'New here? '}
+            ? 'Already part of the community? '
+            : 'New to the platform? '}
           <span
             onClick={() =>
               setState(state === 'login' ? 'register' : 'login')
             }
-            className="text-[#7aa2f7] cursor-pointer"
+            className="text-accent font-bold cursor-pointer hover:underline underline-offset-4 decoration-2"
           >
             {state === 'register' ? 'Sign in' : 'Create account'}
           </span>
         </p>
 
-        {/* Action */}
+        {/* Action Button */}
         <button
           type="submit"
           className="
-            w-full py-2
-            text-sm font-medium
-            rounded-md
-            bg-[#7aa2f7]
-            text-black
-            hover:opacity-90
-            transition
+            w-full py-4
+            text-sm font-black uppercase tracking-widest
+            rounded-2xl
+            bg-accent
+            text-white shadow-lg
+            hover:shadow-accent/40 hover:scale-[1.02]
+            active:scale-95
+            transition-all duration-300
           "
         >
           {state === 'register'
-            ? 'Create account'
-            : 'Sign in'}
+            ? 'Establish Account'
+            : 'Authenticate'}
         </button>
       </form>
+
+      {/* Footer Branding */}
+      <p className="absolute bottom-8 text-[10px] font-black text-muted uppercase tracking-[0.3em] opacity-70">
+        Prompto Intelligence Systems • v2.0
+      </p>
     </div>
   )
 }

@@ -42,17 +42,13 @@ export const stripeWebhooks = async (req, res) => {
         const { transactionId, app } = session.metadata || {};
 
         /* ---- Validate metadata ---- */
-        if (app !== 'quickgpt' || !transactionId) {
-          return res.json({ received: true });
-        }
-
         /* ---- Idempotent transaction lookup ---- */
         const transaction = await Transaction.findOne({
           _id: transactionId,
           isPaid: false,
         });
 
-        if (!transaction) {
+        if (!transaction || app !== 'prompto') {
           // Already processed or invalid
           return res.json({ received: true });
         }
