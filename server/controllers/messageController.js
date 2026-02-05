@@ -4,12 +4,21 @@ import User from "../models/User.js";
 import imagekit from "../configs/imageKit.js";
 import ai from "../configs/ai.js";
 
-/* ---------------- TEXT MESSAGE ---------------- */
+/* ===================================================== */
+/* ================= TEXT MESSAGE ====================== */
+/* ===================================================== */
 
 export const textMessageController = async (req, res) => {
+  console.log("\n🚀 TEXT MESSAGE REQUEST");
+  console.log("Body:", req.body);
+
   try {
-    const userId = req.user._id;
+    const userId = req.user?._id;
     const { chatId, prompt } = req.body;
+
+    if (!userId) {
+      throw new Error("User not authenticated");
+    }
 
     if (!chatId || !prompt?.trim()) {
       return res.status(400).json({
@@ -18,81 +27,90 @@ export const textMessageController = async (req, res) => {
       });
     }
 
-    /* ---- Atomic credit check & deduction ---- */
+    /* ---------- CREDIT CHECK ---------- */
+
     const user = await User.findOneAndUpdate(
       { _id: userId, credits: { $gte: 1 } },
       { $inc: { credits: -1 } },
-      { new: true },
+      { new: true }
     );
-    console.log("User after credit deduction:", user);
+
+    console.log("👤 User after credit deduction:", user);
+
     if (!user) {
       return res.status(403).json({
         success: false,
-        message: "You don't have enough credits",
+        message: "Not enough credits",
       });
     }
+
+    /* ---------- CHAT VALIDATION ---------- */
 
     const chat = await Chat.findOne({ _id: chatId, userId });
+
     if (!chat) {
-      return res.status(404).json({
-        success: false,
-        message: "Chat not found",
-      });
+      throw new Error("Chat not found or unauthorized");
     }
 
-    /* ---- Save user message ---- */
+    /* ---------- SAVE USER MESSAGE ---------- */
+
     chat.messages.push({
       role: "user",
       content: prompt,
       timestamp: Date.now(),
       isImage: false,
     });
-    console.log(chat.messages);
-    /* ---- AI call ---- */
+
+    /* ===================================================== */
+    /* ================= AI CALL =========================== */
+    /* ===================================================== */
+
     let aiContent;
+
     try {
-      console.log(prompt);
-      const systemInstruction = "You are Prompto, a friendly personal assistant. do NOT mention your model or the word 'gemini'. Keep responses concise and helpful.";
+      console.log("🤖 Sending to AI:", prompt);
+
+      const systemInstruction =
+        "You are Prompto, a friendly assistant. Never mention Gemini. Keep answers concise.";
+
       const aiResponse = await ai.models.generateContent({
         model: "gemini-2.5-flash-lite",
         contents: `${systemInstruction}\n\n${prompt}`,
       });
 
-      // Assign to outer variable (fix shadowing bug) and support multiple shapes
-      aiContent = aiResponse?.text || aiResponse?.output_text ||
-        (aiResponse?.output ? aiResponse.output.map(o => (o.content || [])
-          .map(c => c.text || '')
-          .join('')).join('\n') : undefined);
+      console.log("🧠 RAW AI RESPONSE:", JSON.stringify(aiResponse, null, 2));
 
-      console.log("AI response:", aiResponse);
+      aiContent =
+        aiResponse?.text ||
+        aiResponse?.output_text ||
+        aiResponse?.output?.map(o =>
+          (o.content || []).map(c => c.text || "").join("")
+        ).join("\n");
 
-      if (!aiContent || !String(aiContent).trim()) {
-        // Refund credit if AI returned no content
-        await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } });
-        console.error("AI returned unexpected response:", aiResponse);
-        return res.status(500).json({
-          success: false,
-          message: "AI returned no content",
-        });
+      if (!aiContent || !aiContent.trim()) {
+        throw new Error("AI returned empty content");
       }
 
-      aiContent = String(aiContent).trim();
-    } catch (err) {
-      // Refund credit on failure
+      aiContent = aiContent.trim();
+    } catch (aiErr) {
+      console.error("🔥 AI FAILURE:", aiErr);
+      console.error(aiErr.stack);
+
+      /* Refund credit */
       try {
         await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } });
+        console.log("💰 Credit refunded");
       } catch (refundErr) {
-        console.error(
-          "Failed to refund credits after AI error:",
-          refundErr,
-        );
+        console.error("Refund failed:", refundErr);
       }
-      console.error("AI error:", err);
+
       return res.status(500).json({
         success: false,
-        message: "Failed to process message",
+        message: aiErr.message,
       });
     }
+
+    /* ---------- SAVE AI REPLY ---------- */
 
     const reply = {
       role: "assistant",
@@ -104,57 +122,59 @@ export const textMessageController = async (req, res) => {
     chat.messages.push(reply);
     await chat.save();
 
+    console.log("✅ Message processed successfully");
+
     return res.status(200).json({
       success: true,
       reply,
     });
-  } 
-  catch (err) {
-      console.error("🔥 MESSAGE ERROR:", err);
-      res.status(500).json({
+
+  } catch (err) {
+    console.error("\n🔥 CONTROLLER FAILURE:");
+    console.error(err);
+    console.error(err.stack);
+
+    return res.status(500).json({
       success: false,
-       message: err.message,
-     });
+      message: err.message,
+    });
   }
 };
 
-/* ---------------- IMAGE MESSAGE ---------------- */
+/* ===================================================== */
+/* ================= IMAGE MESSAGE ===================== */
+/* ===================================================== */
 
 export const imageMessageController = async (req, res) => {
+  console.log("\n🖼 IMAGE REQUEST:", req.body);
+
   try {
-    const userId = req.user._id;
+    const userId = req.user?._id;
     const { chatId, prompt, isPublished } = req.body;
 
     if (!chatId || !prompt?.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Chat ID and prompt are required",
+        message: "Chat ID and prompt required",
       });
     }
 
-    /* ---- Atomic credit check (2 credits) ---- */
     const user = await User.findOneAndUpdate(
       { _id: userId, credits: { $gte: 2 } },
       { $inc: { credits: -2 } },
-      { new: true },
+      { new: true }
     );
 
     if (!user) {
       return res.status(403).json({
         success: false,
-        message: "You don't have enough credits",
+        message: "Not enough credits",
       });
     }
 
     const chat = await Chat.findOne({ _id: chatId, userId });
-    if (!chat) {
-      return res.status(404).json({
-        success: false,
-        message: "Chat not found",
-      });
-    }
+    if (!chat) throw new Error("Chat not found");
 
-    /* ---- Save user prompt ---- */
     chat.messages.push({
       role: "user",
       content: prompt,
@@ -162,21 +182,22 @@ export const imageMessageController = async (req, res) => {
       isImage: false,
     });
 
-    /* ---- Image generation ---- */
     const encodedPrompt = encodeURIComponent(prompt);
+
     const imageUrl =
       `${process.env.IMAGEKIT_URL_ENDPOINT}` +
       `/ik-genimg-prompt-${encodedPrompt}` +
       `/quickgpt/${Date.now()}.png?tr=w-800,h-800`;
+
+    console.log("🌐 Fetching image:", imageUrl);
 
     const aiImage = await axios.get(imageUrl, {
       responseType: "arraybuffer",
       timeout: 20000,
     });
 
-    const base64Image = `data:image/png;base64,${Buffer.from(
-      aiImage.data,
-    ).toString("base64")}`;
+    const base64Image =
+      `data:image/png;base64,${Buffer.from(aiImage.data).toString("base64")}`;
 
     const upload = await imagekit.upload({
       file: base64Image,
@@ -195,15 +216,21 @@ export const imageMessageController = async (req, res) => {
     chat.messages.push(reply);
     await chat.save();
 
+    console.log("✅ Image generated");
+
     return res.status(200).json({
       success: true,
       reply,
     });
+
   } catch (err) {
-    console.error("Image message error:", err.message);
+    console.error("\n🔥 IMAGE FAILURE:");
+    console.error(err);
+    console.error(err.stack);
+
     return res.status(500).json({
       success: false,
-      message: "Failed to generate image",
+      message: err.message,
     });
   }
 };
