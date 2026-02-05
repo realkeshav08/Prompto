@@ -4,8 +4,14 @@ import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 
+/* ---------------- AXIOS GLOBAL CONFIG ---------------- */
+
 axios.defaults.baseURL = import.meta.env.VITE_SERVER_URL
+axios.defaults.withCredentials = true // ⭐ REQUIRED for CORS + cookies
+
 console.log("API URL:", import.meta.env.VITE_SERVER_URL);
+
+/* ---------------- CONTEXT ---------------- */
 
 const AppContext = createContext()
 
@@ -44,13 +50,13 @@ export const AppContextProvider = ({ children }) => {
     }
   }, [token])
 
-
   /* ---------------- USER ---------------- */
 
   const fetchUser = async () => {
     try {
       setLoadingUser(true)
       const { data } = await axios.get('/api/user/data')
+
       if (data.success) {
         setUser(data.user)
       } else {
