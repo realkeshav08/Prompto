@@ -74,7 +74,7 @@ export const textMessageController = async (req, res) => {
         "You are Prompto, a friendly assistant. Never mention Gemini. Keep answers concise.";
 
       const aiResponse = await ai.models.generateContent({
-        model: "gemini-2.5-flash-lite",
+        model: "gemini-1.5-flash",
         contents: `${systemInstruction}\n\n${prompt}`,
       });
 
