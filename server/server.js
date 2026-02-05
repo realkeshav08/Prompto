@@ -21,21 +21,35 @@ try {
 }
 
 /* ---------------- STRIPE WEBHOOK ---------------- */
-/* MUST come before express.json() */
+
 app.post(
   '/api/webhook/stripe',
   express.raw({ type: 'application/json' }),
   stripeWebhooks
 );
 
-/* ---------------- MIDDLEWARE ---------------- */
+/* ---------------- CORS CONFIG ---------------- */
+
+// Add your real Vercel domain here
+const allowedOrigins = [
+  process.env.CLIENT_URL,         // production frontend
+  'http://localhost:5173',        // local dev
+];
 
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('CORS not allowed'));
+      }
+    },
     credentials: true,
   })
 );
+
+/* ---------------- MIDDLEWARE ---------------- */
 
 app.use(express.json());
 
@@ -65,7 +79,7 @@ app.use((err, _req, res, _next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({
     success: false,
-    message: 'Internal server error',
+    message: err.message || 'Internal server error',
   });
 });
 
