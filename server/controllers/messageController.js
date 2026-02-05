@@ -108,12 +108,13 @@ export const textMessageController = async (req, res) => {
       success: true,
       reply,
     });
-  } catch (err) {
-    console.error("Text message error:", err.message);
-    return res.status(500).json({
+  } 
+  catch (err) {
+      console.error("🔥 MESSAGE ERROR:", err);
+      res.status(500).json({
       success: false,
-      message: "Failed to process message",
-    });
+       message: err.message,
+     });
   }
 };
 
