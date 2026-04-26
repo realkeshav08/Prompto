@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import Loading from './Loading'
 import { useAppContext } from '../context/AppContext'
 import toast from 'react-hot-toast'
@@ -9,8 +9,9 @@ const Credits = () => {
   const [loading, setLoading] = useState(true)
   const { token, axios, fetchUser } = useAppContext()
 
-  const fetchPlans = async () => {
+  const fetchPlans = useCallback(async () => {
     try {
+      setLoading(true)
       const { data } = await axios.get('/api/credit/plan', {
         headers: { Authorization: token }
       })
@@ -24,9 +25,9 @@ const Credits = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [axios, token])
 
-  const purchasePlan = async (planId) => {
+  const purchasePlan = useCallback(async (planId) => {
     try {
       const { data } = await axios.post(
         '/api/credit/purchase',
@@ -34,18 +35,19 @@ const Credits = () => {
         { headers: { Authorization: token } }
       )
       if (data.success) {
-        window.location.href = data.url
+        window.location.assign(data.url)
       } else {
         toast.error(data.message)
       }
     } catch (err) {
       toast.error(err.message)
     }
-  }
+  }, [axios, token])
 
   useEffect(() => {
-    fetchPlans()
-  }, [])
+    const t = setTimeout(fetchPlans, 0)
+    return () => clearTimeout(t)
+  }, [fetchPlans])
 
   if (loading) return <Loading />
 

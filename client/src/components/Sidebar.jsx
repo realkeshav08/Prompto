@@ -16,7 +16,6 @@ const Sidebar = ({ isMenuOpen, setIsMenuOpen }) => {
     createNewChat,
     axios,
     setChats,
-    fetchUsersChats,
     setToken,
     token
   } = useAppContext()

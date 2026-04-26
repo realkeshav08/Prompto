@@ -13,7 +13,7 @@ const Loading = () => {
     }, 8000)
 
     return () => clearTimeout(timeout)
-  }, [])
+  }, [fetchUser, navigate])
 
   return (
     <div className="

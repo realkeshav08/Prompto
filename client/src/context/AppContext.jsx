@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import toast from 'react-hot-toast'
@@ -52,7 +52,7 @@ export const AppContextProvider = ({ children }) => {
 
   /* ---------------- USER ---------------- */
 
-  const fetchUser = async () => {
+  const fetchUser = useCallback(async () => {
     try {
       setLoadingUser(true)
       const { data } = await axios.get('/api/user/data')
@@ -68,11 +68,31 @@ export const AppContextProvider = ({ children }) => {
     } finally {
       setLoadingUser(false)
     }
-  }
+  }, [])
 
   /* ---------------- CHATS ---------------- */
 
-  const fetchUsersChats = async () => {
+  const createNewChat = useCallback(async (silent = false) => {
+    try {
+      if (!user) {
+        if (!silent) toast('Login to create a new chat')
+        return
+      }
+
+      const { data } = await axios.get('/api/chat/create')
+
+      if (data.success) {
+        setChats(prev => [data.chat, ...prev])
+        setSelectedChat(data.chat)
+        navigate('/')
+        if (!silent) toast.success('New session started')
+      }
+    } catch (err) {
+      toast.error(err.message)
+    }
+  }, [user, navigate])
+
+  const fetchUsersChats = useCallback(async () => {
     try {
       setLoadingChats(true)
       const { data } = await axios.get('/api/chat/get')
@@ -94,27 +114,7 @@ export const AppContextProvider = ({ children }) => {
     } finally {
       setLoadingChats(false)
     }
-  }
-
-  const createNewChat = async (silent = false) => {
-    try {
-      if (!user) {
-        if (!silent) toast('Login to create a new chat')
-        return
-      }
-
-      const { data } = await axios.get('/api/chat/create')
-
-      if (data.success) {
-        setChats(prev => [data.chat, ...prev])
-        setSelectedChat(data.chat)
-        navigate('/')
-        if (!silent) toast.success('New session started')
-      }
-    } catch (err) {
-      toast.error(err.message)
-    }
-  }
+  }, [createNewChat])
 
   /* ---------------- THEME ---------------- */
 
@@ -127,21 +127,29 @@ export const AppContextProvider = ({ children }) => {
 
   useEffect(() => {
     if (token) {
-      fetchUser()
+      const t = setTimeout(fetchUser, 0)
+      return () => clearTimeout(t)
     } else {
-      setUser(null)
-      setLoadingUser(false)
+      const t = setTimeout(() => {
+        setUser(prev => prev === null ? prev : null)
+        setLoadingUser(prev => prev === false ? prev : false)
+      }, 0)
+      return () => clearTimeout(t)
     }
-  }, [token])
+  }, [token, fetchUser])
 
   useEffect(() => {
     if (user) {
-      fetchUsersChats()
+      const t = setTimeout(fetchUsersChats, 0)
+      return () => clearTimeout(t)
     } else {
-      setChats([])
-      setSelectedChat(null)
+      const t = setTimeout(() => {
+        setChats(prev => prev.length === 0 ? prev : [])
+        setSelectedChat(prev => prev === null ? prev : null)
+      }, 0)
+      return () => clearTimeout(t)
     }
-  }, [user])
+  }, [user, fetchUsersChats])
 
   /* ---------------- CONTEXT VALUE ---------------- */
 
@@ -164,13 +172,17 @@ export const AppContextProvider = ({ children }) => {
     createNewChat,
     axios
   }), [
+    navigate,
     user,
     chats,
     selectedChat,
     theme,
     token,
     loadingUser,
-    loadingChats
+    loadingChats,
+    fetchUser,
+    fetchUsersChats,
+    createNewChat
   ])
 
   return (

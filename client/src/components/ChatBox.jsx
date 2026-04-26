@@ -33,7 +33,9 @@ const ChatBox = () => {
       )
 
       if (data.success) {
-        setMessages(prev => [...prev, data.reply])
+        setTimeout(() => {
+          setMessages(prev => [...prev, data.reply])
+        }, 0)
 
         // Sync Sidebar Recent Activity
         setChats(prev => {
@@ -66,7 +68,10 @@ const ChatBox = () => {
   }
 
   useEffect(() => {
-    if (selectedChat) setMessages(selectedChat.messages)
+    if (selectedChat) {
+      const t = setTimeout(() => setMessages(selectedChat.messages), 0)
+      return () => clearTimeout(t)
+    }
   }, [selectedChat])
 
   useEffect(() => {

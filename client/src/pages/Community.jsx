@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import Loading from './Loading'
 import { useAppContext } from '../context/AppContext'
 import toast from 'react-hot-toast'
@@ -9,8 +9,9 @@ const Community = () => {
   const [loading, setLoading] = useState(true)
   const { axios } = useAppContext()
 
-  const fetchImages = async () => {
+  const fetchImages = useCallback(async () => {
     try {
+      setLoading(true)
       const { data } = await axios.get('/api/user/published-images')
       if (data.success) {
         setImages(data.images)
@@ -22,11 +23,12 @@ const Community = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [axios])
 
   useEffect(() => {
-    fetchImages()
-  }, [])
+    const t = setTimeout(fetchImages, 0)
+    return () => clearTimeout(t)
+  }, [fetchImages])
 
   if (loading) return <Loading />
 
