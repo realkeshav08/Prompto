@@ -30,10 +30,13 @@ export const createChat = async (req, res) => {
 export const getChats = async (req, res) => {
   try {
     const userId = req.user._id;
+    console.log(`📂 Fetching chats for User: ${userId}`);
 
     const chats = await Chat.find({ userId })
       .sort({ updatedAt: -1 })
       .lean();
+
+    console.log(`✅ Found ${chats.length} chats`);
 
     return res.status(200).json({
       success: true,

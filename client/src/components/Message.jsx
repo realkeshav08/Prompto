@@ -22,9 +22,28 @@ const Message = ({ message }) => {
           break-words relative
         `}
       >
-        {message.isImage ? (
-          <div className="rounded-2xl overflow-hidden border border-border/10 shadow-lg bg-black/5">
-            <img src={message.content} alt="generated" className="w-full h-auto object-cover hover:scale-105 transition-transform duration-500" />
+        {message.isVideo ? (
+          <div className="rounded-2xl overflow-hidden border border-border/10 shadow-lg bg-black/5 min-h-[200px] flex items-center justify-center relative group">
+            <div className="absolute inset-0 bg-accent/5 animate-pulse group-data-[loaded=true]:hidden" />
+            <video 
+              src={message.content} 
+              autoPlay 
+              loop 
+              muted 
+              playsInline
+              onLoadedData={(e) => e.target.parentElement.setAttribute('data-loaded', 'true')}
+              className="w-full h-auto object-cover hover:scale-105 transition-transform duration-500 relative z-10" 
+            />
+          </div>
+        ) : message.isImage ? (
+          <div className="rounded-2xl overflow-hidden border border-border/10 shadow-lg bg-black/5 min-h-[200px] flex items-center justify-center relative group">
+            <div className="absolute inset-0 bg-accent/5 animate-pulse group-data-[loaded=true]:hidden" />
+            <img 
+              src={message.content} 
+              alt="generated" 
+              onLoad={(e) => e.target.parentElement.setAttribute('data-loaded', 'true')}
+              className="w-full h-auto object-cover hover:scale-105 transition-transform duration-500 relative z-10" 
+            />
           </div>
         ) : (
           <div className="text-[15px] leading-relaxed font-semibold tracking-tight whitespace-pre-wrap">

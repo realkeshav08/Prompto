@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import Loading from './Loading'
-import { useAppContext } from '../context/AppContext'
+import { useAppContext } from '../context'
 import toast from 'react-hot-toast'
 import { assets } from '../assets/assets'
 
@@ -64,7 +64,7 @@ const Community = () => {
           {images.map((item, idx) => (
             <a
               key={idx}
-              href={item.imageUrl}
+              href={item.url}
               target="_blank"
               rel="noreferrer"
               className="
@@ -78,16 +78,39 @@ const Community = () => {
               "
               style={{ animationDelay: `${idx * 0.05}s` }}
             >
-              <div className="aspect-[4/3] overflow-hidden">
-                <img
-                  src={item.imageUrl}
-                  alt="community creation"
-                  className="
-                    w-full h-full object-cover
-                    group-hover:scale-110
-                    transition-transform duration-700 ease-out
-                  "
-                />
+              {/* Media Container */}
+              <div className="aspect-[4/3] overflow-hidden relative">
+                {item.isVideo ? (
+                  <video 
+                    src={item.url} 
+                    autoPlay 
+                    loop 
+                    muted 
+                    playsInline 
+                    className="
+                      w-full h-full object-cover
+                      group-hover:scale-110
+                      transition-transform duration-700 ease-out
+                    "
+                  />
+                ) : (
+                  <img
+                    src={item.url}
+                    alt="community creation"
+                    className="
+                      w-full h-full object-cover
+                      group-hover:scale-110
+                      transition-transform duration-700 ease-out
+                    "
+                  />
+                )}
+
+                {/* Type Badge */}
+                <div className="absolute top-4 right-4 z-10">
+                  <div className="px-2.5 py-1 rounded-lg bg-black/40 backdrop-blur-md border border-white/10 text-[8px] font-black uppercase tracking-widest text-white shadow-xl">
+                    {item.isVideo ? 'Video' : 'Image'}
+                  </div>
+                </div>
               </div>
 
               {/* Sophisticated Overlay */}
@@ -103,10 +126,10 @@ const Community = () => {
                 <div className="translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
                   <p className="text-[10px] font-black uppercase tracking-widest text-white/60 mb-1">Created by</p>
                   <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-accent flex items-center justify-center text-[10px] font-bold text-white">
-                      {item.userName.charAt(0)}
+                    <div className="w-6 h-6 rounded-full bg-accent flex items-center justify-center text-[10px] font-bold text-white uppercase">
+                      {item.userName ? item.userName.charAt(0) : '?'}
                     </div>
-                    <p className="text-sm font-bold text-white tracking-tight">{item.userName}</p>
+                    <p className="text-sm font-bold text-white tracking-tight">{item.userName || 'Anonymous'}</p>
                   </div>
                 </div>
               </div>

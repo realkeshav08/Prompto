@@ -1,49 +1,77 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { useAppContext } from '../context/AppContext'
+import { useNavigate } from 'react-router-dom'
+import { useAppContext } from '../context'
 import { assets } from '../assets/assets'
 import Message from './Message'
 import toast from 'react-hot-toast'
 
 const ChatBox = () => {
+  const navigate = useNavigate()
   const containerRef = useRef(null)
   const { selectedChat, user, axios, token, setUser, setChats } = useAppContext()
 
   const [messages, setMessages] = useState([])
-  const [loading, setLoading] = useState(false)
   const [prompt, setPrompt] = useState('')
   const [mode, setMode] = useState('text')
   const [isPublished, setIsPublished] = useState(false)
+  const [loadingChatId, setLoadingChatId] = useState(null)
 
   const onSubmit = async (e) => {
     try {
       e.preventDefault()
       if (!user) return toast('Login to send message')
+      if (!selectedChat) return toast.error('No active session. Please start a new session.')
 
-      setLoading(true)
+      const currentChatId = selectedChat._id
       const promptCopy = prompt
       setPrompt('')
+      
+      setLoadingChatId(currentChatId)
 
       const userMsg = { role: 'user', content: promptCopy, timestamp: Date.now(), isImage: false }
+      
+      // 1. Update local messages instantly
       setMessages(prev => [...prev, userMsg])
+
+      // 2. Update sidebar instantly (so it's persistent if we switch away)
+      setChats(prev => {
+        const updated = prev.map(c => {
+          if (c._id === currentChatId) {
+            let chatName = (c.name === 'New Chat' || c.name === 'New Session' || c.messages.length === 0) 
+              ? (promptCopy.length > 40 ? promptCopy.substring(0, 40) + '...' : promptCopy)
+              : c.name;
+
+            return {
+              ...c,
+              name: chatName,
+              messages: [...c.messages, userMsg],
+              updatedAt: new Date().toISOString()
+            }
+          }
+          return c
+        })
+        return updated.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+      })
 
       const { data } = await axios.post(
         `/api/message/${mode}`,
-        { chatId: selectedChat._id, prompt: promptCopy, isPublished },
+        { chatId: currentChatId, prompt: promptCopy, isPublished },
         { headers: { Authorization: token } }
       )
 
       if (data.success) {
-        setTimeout(() => {
+        // 3. Only update local view if we are STILL on the same chat
+        if (selectedChat?._id === currentChatId) {
           setMessages(prev => [...prev, data.reply])
-        }, 0)
+        }
 
-        // Sync Sidebar Recent Activity
+        // 4. Sync Sidebar with AI response
         setChats(prev => {
           const updated = prev.map(c => {
-            if (c._id === selectedChat._id) {
+            if (c._id === currentChatId) {
               return {
                 ...c,
-                messages: [...c.messages, userMsg, data.reply],
+                messages: [...c.messages.filter(m => m.timestamp !== userMsg.timestamp || m.role !== 'user'), userMsg, data.reply],
                 updatedAt: new Date().toISOString()
               }
             }
@@ -54,23 +82,28 @@ const ChatBox = () => {
 
         setUser(prev => ({
           ...prev,
-          credits: prev.credits - (mode === 'image' ? 2 : 1)
+          credits: prev.credits - (mode === 'video' ? 4 : mode === 'image' ? 2 : 1)
         }))
       } else {
         toast.error(data.message)
         setPrompt(promptCopy)
       }
     } catch (err) {
-      toast.error(err.message)
+      const msg = err.response?.data?.message || err.message
+      toast.error(msg)
+      
+      // If insufficient credits, redirect to pricing/credits page
+      if (err.response?.status === 403) {
+        setTimeout(() => navigate('/credits'), 1500)
+      }
     } finally {
-      setLoading(false)
+      setLoadingChatId(null)
     }
   }
 
   useEffect(() => {
     if (selectedChat) {
-      const t = setTimeout(() => setMessages(selectedChat.messages), 0)
-      return () => clearTimeout(t)
+      setMessages(selectedChat.messages || [])
     }
   }, [selectedChat])
 
@@ -83,6 +116,41 @@ const ChatBox = () => {
 
   return (
     <div className="flex-1 flex flex-col h-full bg-transparent relative">
+      {/* Chat Header */}
+      <div className="flex-none px-6 py-4 border-b border-border/50 flex items-center justify-between glass z-20">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
+            <img src={assets.logo} className="w-5 opacity-40" alt="icon" />
+          </div>
+          <h2 className="text-sm font-bold text-text truncate max-w-[200px] md:max-w-md">
+            {selectedChat?.name || 'New Session'}
+          </h2>
+        </div>
+
+        {selectedChat && (
+          <button
+            onClick={async () => {
+              if (window.confirm('Delete this session permanently?')) {
+                try {
+                  const { data } = await axios.post('/api/chat/delete', { chatId: selectedChat._id })
+                  if (data.success) {
+                    toast.success('Session deleted')
+                    setChats(prev => prev.filter(c => c._id !== selectedChat._id))
+                    // Selected chat will be cleared by AppContextProvider sync or manually here
+                  }
+                } catch (err) {
+                  toast.error('Failed to delete')
+                }
+              }
+            }}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-red-500 hover:bg-red-500/10 transition-all"
+          >
+            <img src={assets.bin_icon} className="w-3.5 opacity-60" alt="delete" />
+            Delete Session
+          </button>
+        )}
+      </div>
+
       {/* Messages area */}
       <div
         ref={containerRef}
@@ -126,11 +194,11 @@ const ChatBox = () => {
           </div>
         )}
 
-        {messages.map((m, i) => (
+        {(messages || []).map((m, i) => (
           <Message key={i} message={m} />
         ))}
 
-        {loading && (
+        {loadingChatId === selectedChat?._id && (
           <div className="flex gap-2 px-6 py-4 glass w-max rounded-2xl ml-4">
             <span className="w-2 h-2 bg-accent rounded-full animate-bounce" />
             <span className="w-2 h-2 bg-accent rounded-full animate-bounce delay-150" />
@@ -141,7 +209,7 @@ const ChatBox = () => {
 
       {/* Modern Interaction Area */}
       <div className="p-6 md:px-12 xl:px-24">
-        {mode === 'image' && (
+        {(mode === 'image' || mode === 'video') && (
           <label className="flex items-center gap-3 text-[11px] font-bold text-muted mb-4 px-4 uppercase tracking-widest">
             <input
               type="checkbox"
@@ -174,6 +242,7 @@ const ChatBox = () => {
             >
               <option value="text">Chat</option>
               <option value="image">Draw</option>
+              <option value="video">Video</option>
             </select>
           </div>
 
@@ -200,7 +269,7 @@ const ChatBox = () => {
           />
 
           <button
-            disabled={loading || !prompt.trim()}
+            disabled={loadingChatId !== null || !prompt.trim()}
             className="
               p-3.5 rounded-full bg-accent text-white shadow-lg
               hover:scale-110 active:scale-90 disabled:opacity-30 disabled:scale-100 disabled:bg-muted/20
@@ -208,8 +277,8 @@ const ChatBox = () => {
             "
           >
             <img
-              src={loading ? assets.stop_icon : assets.send_icon}
-              className={`w-5 invert dark:invert-0 ${!loading && 'group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform'}`}
+              src={loadingChatId !== null ? assets.stop_icon : assets.send_icon}
+              className={`w-5 invert dark:invert-0 ${loadingChatId === null && 'group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform'}`}
               alt="action"
             />
           </button>

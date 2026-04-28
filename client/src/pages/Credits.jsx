@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import Loading from './Loading'
-import { useAppContext } from '../context/AppContext'
+import { useAppContext } from '../context'
 import toast from 'react-hot-toast'
 import { assets } from '../assets/assets'
 

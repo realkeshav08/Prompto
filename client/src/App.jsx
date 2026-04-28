@@ -9,18 +9,81 @@ import Community from './pages/Community'
 import Loading from './pages/Loading'
 import Login from './pages/Login'
 
-import { useAppContext } from './context/AppContext'
+import { useAppContext } from './context'
 import { assets } from './assets/assets'
 import './assets/prism.css'
 
 const App = () => {
-  const { user, loadingUser } = useAppContext()
+  const { user, loadingUser, token } = useAppContext()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const { pathname } = useLocation()
+  
+  // Splash states
+  const [showSplash, setShowSplash] = useState(true)
+  const [isMinimal, setIsMinimal] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
+
+  // 🛡️ LOGIC: Manage the initial "Entry Sequence" (Sync -> Welcome or Guest)
+  React.useEffect(() => {
+    // 1. Still Bootstrapping User
+    if (loadingUser && token) {
+      setIsSyncing(true)
+      setShowSplash(true)
+      return;
+    }
+
+    const hasWelcomed = sessionStorage.getItem('hasWelcomed');
+
+    // 2. Handle GUEST (No token, or finished loading and no user)
+    if (!token || (!loadingUser && !user)) {
+      setIsMinimal(false)
+      setIsSyncing(false)
+      const timer = setTimeout(() => setShowSplash(false), 2000)
+      return () => clearTimeout(timer)
+    }
+
+    // 3. Handle AUTHENTICATED USER
+    if (user && !loadingUser) {
+      if (!hasWelcomed) {
+        // Enforce the 1s Phase 1 (Syncing)
+        setIsSyncing(true)
+        const phase1 = setTimeout(() => {
+          setIsSyncing(false)
+          setIsMinimal(false)
+          // Then the 2s Phase 2 (Welcome)
+          const phase2 = setTimeout(() => {
+            setShowSplash(false)
+            sessionStorage.setItem('hasWelcomed', 'true')
+          }, 2000)
+          return () => clearTimeout(phase2)
+        }, 1000)
+        return () => clearTimeout(phase1)
+      } else {
+        // Already welcomed in this session, handle as 1s refresh splash
+        setIsMinimal(true)
+        setIsSyncing(false)
+        const timer = setTimeout(() => setShowSplash(false), 1000)
+        return () => clearTimeout(timer)
+      }
+    }
+  }, [user, loadingUser, token])
+
+  // 🛡️ LOGIC: Manage "Navigation Transitions"
+  const prevPath = React.useRef(pathname)
+  React.useEffect(() => {
+    // Only trigger if the path actually changed AND we've already done the welcome
+    if (pathname !== prevPath.current && sessionStorage.getItem('hasWelcomed')) {
+      prevPath.current = pathname
+      setIsMinimal(true)
+      setShowSplash(true)
+      const timer = setTimeout(() => setShowSplash(false), 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [pathname])
 
   // Global loading gate
-  if (pathname === '/loading' || loadingUser) {
-    return <Loading />
+  if (showSplash || (loadingUser && token)) {
+    return <Loading minimal={isMinimal} isSyncing={isSyncing} />
   }
 
   return (

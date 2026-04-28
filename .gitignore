@@ -1,0 +1,28 @@
+# Root dependencies
+node_modules/
+package-lock.json
+
+# Workspace files
+.gemini/
+.antigravity/
+repo_tree.txt
+
+# Client specific
+client/node_modules/
+client/dist/
+client/.env
+client/*.local
+
+# Server specific
+server/node_modules/
+server/.env
+server/logs/
+server/*.log
+
+# OS & Editor
+.DS_Store
+.vscode/
+.idea/
+Thumbs.db
+*.suo
+*.sw?

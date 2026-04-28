@@ -20,7 +20,12 @@ const MessageSchema = new Schema(
 
     isImage: {
       type: Boolean,
-      required: true,
+      default: false,
+    },
+
+    isVideo: {
+      type: Boolean,
+      default: false,
     },
 
     isPublished: {
