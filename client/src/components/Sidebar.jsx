@@ -68,7 +68,7 @@ const Sidebar = ({ isMenuOpen, setIsMenuOpen }) => {
       {/* Brand */}
       <div className="flex items-center gap-3 mb-10 px-2 cursor-pointer group" onClick={() => navigate('/')}>
         <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-          <img src={assets.logo} className="w-6 invert dark:invert-0" alt="logo" />
+          <img src={assets.logo} className="w-6" alt="logo" />
         </div>
         <span className="text-xl font-bold tracking-tight text-text">Prompto</span>
       </div>

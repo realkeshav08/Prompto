@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-import logo from "./logo.svg";
+const logo = "https://keshavkashyap.sirv.com/keshav_kashyap/keshav_circular_logo.png";
 import logo_full from "./logo_full.svg";
 import logo_full_dark from "./logo_full_dark.svg";
 import search_icon from "./search_icon.svg";
