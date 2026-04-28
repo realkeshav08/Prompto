@@ -11,6 +11,13 @@ const api = axios.create({
   withCredentials: true
 })
 
+// Production-safe logging
+const logger = {
+  log: (...args) => { if (import.meta.env.DEV) console.log(...args) },
+  warn: (...args) => { if (import.meta.env.DEV) console.warn(...args) },
+  error: (...args) => console.error(...args) // Always log errors
+}
+
 export const AppContextProvider = ({ children }) => {
   const navigate = useNavigate()
 
@@ -47,7 +54,7 @@ export const AppContextProvider = ({ children }) => {
       response => response,
       error => {
         if (error.response?.status === 401) {
-          console.warn("🚫 Session expired or invalid");
+          logger.warn("🚫 Session expired or invalid");
           setToken(null)
           localStorage.removeItem('token')
           setUser(null)
@@ -154,10 +161,10 @@ export const AppContextProvider = ({ children }) => {
 
   useEffect(() => {
     if (token) {
-      console.log("🔐 Token detected, bootstrapping...");
+      logger.log("🔐 Token detected, bootstrapping...");
       fetchUser();
     } else {
-      console.log("🚫 No token, reset state");
+      logger.log("🚫 No token, reset state");
       setUser(null);
       setChats([]);
       setSelectedChat(null);
@@ -170,11 +177,11 @@ export const AppContextProvider = ({ children }) => {
       const hasAutoCreated = sessionStorage.getItem('hasAutoCreatedFirstChat');
       
       if (!hasAutoCreated) {
-        console.log("👤 First Login - Creating New Chat");
+        logger.log("👤 First Login - Creating New Chat");
         sessionStorage.setItem('hasAutoCreatedFirstChat', 'true');
         fetchUsersChats(); // This will trigger createNewChat in its logic
       } else {
-        console.log("👤 Refresh/Return - Syncing Chats only");
+        logger.log("👤 Refresh/Return - Syncing Chats only");
         // For refreshes, we just fetch chats without forcing a new one
         const syncOnly = async () => {
           try {

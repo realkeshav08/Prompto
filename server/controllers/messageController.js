@@ -230,10 +230,10 @@ export const imageMessageController = async (req, res) => {
     const cleanPrompt = prompt.replace(/^(draw|generate|create|make)\s+(an\s+)?(image\s+)?(of\s+)?/i, '').trim();
     const encodedPrompt = encodeURIComponent(cleanPrompt);
 
-    // URL Normalization: Ensure no double slashes
-    const baseUrl = process.env.IMAGEKIT_URL_ENDPOINT.endsWith('/') 
-      ? process.env.IMAGEKIT_URL_ENDPOINT.slice(0, -1) 
-      : process.env.IMAGEKIT_URL_ENDPOINT;
+    // URL Normalization: Ensure HTTPS and no double slashes
+    let baseUrl = process.env.IMAGEKIT_URL_ENDPOINT;
+    if (!baseUrl.startsWith('http')) baseUrl = `https://${baseUrl}`;
+    baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
 
     const imageUrl =
       `${baseUrl}` +

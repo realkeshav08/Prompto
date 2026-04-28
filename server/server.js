@@ -1,6 +1,8 @@
 import express from 'express';
 import 'dotenv/config';
 import cors from 'cors';
+import helmet from 'helmet';
+import compression from 'compression';
 
 import connectDB from './configs/db.js';
 import userRouter from './routes/userRoutes.js';
@@ -51,6 +53,10 @@ app.use(
 
 /* ---------------- MIDDLEWARE ---------------- */
 
+app.use(helmet({
+  crossOriginResourcePolicy: false, // Required for ImageKit images to load correctly in some browsers
+}));
+app.use(compression());
 app.use(express.json());
 
 /* ---------------- ROUTES ---------------- */
