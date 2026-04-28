@@ -57,8 +57,8 @@ const Login = () => {
       >
         {/* Brand/Logo */}
         <div className="flex flex-col items-center mb-10">
-          <div className="w-16 h-16 flex items-center justify-center mb-6 hover:rotate-12 transition-transform duration-500">
-            <img src={assets.logo} className="w-10" alt="logo" />
+          <div className="w-20 h-20 flex items-center justify-center mb-6 hover:rotate-12 transition-transform duration-500">
+            <img src={assets.logo} className="w-18 rounded-2xl" alt="logo" />
           </div>
           <h1 className="text-4xl font-black tracking-tight text-center">
             {state === 'login' ? (
