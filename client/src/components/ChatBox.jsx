@@ -92,7 +92,7 @@ const ChatBox = () => {
           <div className="h-full flex flex-col items-center justify-center text-center animate-fade-in max-w-4xl mx-auto">
             <div className="relative mb-10">
               <div className="absolute inset-0 bg-accent/20 blur-3xl rounded-full" />
-              <div className="relative w-24 h-24 bg-panel border-2 border-accent/20 rounded-3xl flex items-center justify-center shadow-premium">
+              <div className="relative w-24 h-24 flex items-center justify-center">
                 <img src={assets.logo} className="w-12" alt="logo" />
               </div>
             </div>
