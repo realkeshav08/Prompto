@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAppContext } from '../context'
 import { assets } from '../assets/assets'
 import Message from './Message'
+import DocumentUpload from './DocumentUpload'
 import toast from 'react-hot-toast'
 
 const ChatBox = () => {
@@ -13,8 +14,10 @@ const ChatBox = () => {
   const [messages, setMessages] = useState([])
   const [prompt, setPrompt] = useState('')
   const [mode, setMode] = useState('text')
+  const [ragMode, setRagMode] = useState('hybrid')
   const [isPublished, setIsPublished] = useState(false)
   const [loadingChatId, setLoadingChatId] = useState(null)
+  const [showUpload, setShowUpload] = useState(false)
 
   const onSubmit = async (e) => {
     try {
@@ -53,11 +56,14 @@ const ChatBox = () => {
         return updated.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
       })
 
-      const { data } = await axios.post(
-        `/api/message/${mode}`,
-        { chatId: currentChatId, prompt: promptCopy, isPublished },
-        { headers: { Authorization: token } }
-      )
+      const endpoint = mode === 'study' ? '/api/message/rag' : `/api/message/${mode}`
+      const payload = mode === 'study'
+        ? { chatId: currentChatId, prompt: promptCopy, ragMode }
+        : { chatId: currentChatId, prompt: promptCopy, isPublished }
+
+      const { data } = await axios.post(endpoint, payload, {
+        headers: { Authorization: token },
+      })
 
       if (data.success) {
         // 3. Only update local view if we are STILL on the same chat
@@ -83,6 +89,7 @@ const ChatBox = () => {
         setUser(prev => ({
           ...prev,
           credits: prev.credits - (mode === 'video' ? 4 : mode === 'image' ? 2 : 1)
+          // study mode costs 1 credit (falls through to the final :1)
         }))
       } else {
         toast.error(data.message)
@@ -116,6 +123,7 @@ const ChatBox = () => {
 
   return (
     <div className="flex-1 flex flex-col h-full bg-transparent relative">
+      <DocumentUpload isOpen={showUpload} onClose={() => setShowUpload(false)} />
       {/* Chat Header */}
       <div className="flex-none px-6 py-4 border-b border-border/50 flex items-center justify-between glass z-20">
         <div className="flex items-center gap-3">
@@ -221,6 +229,31 @@ const ChatBox = () => {
           </label>
         )}
 
+        {mode === 'study' && (
+          <div className="flex items-center gap-3 mb-4 px-1">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-muted">Source:</span>
+            {['notes', 'global', 'hybrid'].map(m => (
+              <button
+                key={m}
+                onClick={() => setRagMode(m)}
+                className={`px-3 py-1.5 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all ${
+                  ragMode === m
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'bg-surface/40 text-muted hover:text-text'
+                }`}
+              >
+                {m === 'notes' ? '📝 My Notes' : m === 'global' ? '🌐 Global' : '⚡ Hybrid'}
+              </button>
+            ))}
+            <button
+              onClick={() => setShowUpload(true)}
+              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-accent/10 text-accent text-[11px] font-bold hover:bg-accent/20 transition-all"
+            >
+              📂 Manage Docs
+            </button>
+          </div>
+        )}
+
         <form
           onSubmit={onSubmit}
           className="
@@ -243,6 +276,7 @@ const ChatBox = () => {
               <option value="text">Chat</option>
               <option value="image">Draw</option>
               <option value="video">Video</option>
+              <option value="study">Study AI</option>
             </select>
           </div>
 

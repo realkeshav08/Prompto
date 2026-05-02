@@ -11,13 +11,26 @@ repo_tree.txt
 client/node_modules/
 client/dist/
 client/.env
+client/.env.local
+client/.env.*.local
 client/*.local
 
 # Server specific
 server/node_modules/
 server/.env
+server/.env.local
+server/.env.*.local
 server/logs/
 server/*.log
+
+# Python service
+python-service/__pycache__/
+python-service/*.pyc
+python-service/*.pyo
+python-service/.env
+python-service/.env.local
+python-service/venv/
+python-service/.venv/
 
 # OS & Editor
 .DS_Store
@@ -26,3 +39,6 @@ server/*.log
 Thumbs.db
 *.suo
 *.sw?
+
+# Claude Code
+.claude/

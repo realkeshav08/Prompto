@@ -1,4 +1,5 @@
 import React from 'react'
+import ReactMarkdown from 'react-markdown'
 
 const Message = ({ message }) => {
   const isUser = message.role === 'user'
@@ -45,9 +46,13 @@ const Message = ({ message }) => {
               className="w-full h-auto object-cover hover:scale-105 transition-transform duration-500 relative z-10" 
             />
           </div>
-        ) : (
+        ) : isUser ? (
           <div className="text-[15px] leading-relaxed font-semibold tracking-tight whitespace-pre-wrap">
             {message.content}
+          </div>
+        ) : (
+          <div className="text-[15px] leading-relaxed font-semibold tracking-tight prose prose-invert prose-sm max-w-none">
+            <ReactMarkdown>{message.content}</ReactMarkdown>
           </div>
         )}
 

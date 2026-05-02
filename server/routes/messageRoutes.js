@@ -4,6 +4,7 @@ import {
   imageMessageController,
   textMessageController,
   videoMessageController,
+  ragMessageController,
 } from '../controllers/messageController.js';
 
 const messageRouter = express.Router();
@@ -18,5 +19,8 @@ messageRouter.post('/image', protect, imageMessageController);
 
 // Video generation message
 messageRouter.post('/video', protect, videoMessageController);
+
+// Study AI — RAG-powered response
+messageRouter.post('/rag', protect, ragMessageController);
 
 export default messageRouter;

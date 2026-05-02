@@ -2,16 +2,14 @@ import axios from "axios";
 import Chat from "../models/Chat.js";
 import User from "../models/User.js";
 import imagekit from "../configs/imageKit.js";
-import ai from "../configs/ai.js";
+
+const PYTHON_AI_URL = process.env.PYTHON_AI_URL || "http://localhost:8000";
 
 /* ===================================================== */
 /* ================= TEXT MESSAGE ====================== */
 /* ===================================================== */
 
 export const textMessageController = async (req, res) => {
-  console.log("\n🚀 TEXT MESSAGE REQUEST");
-  console.log("Body:", req.body);
-
   try {
     const userId = req.user?._id;
     const { chatId, prompt } = req.body;
@@ -34,8 +32,6 @@ export const textMessageController = async (req, res) => {
       { $inc: { credits: -1 } },
       { returnDocument: 'after' }
     );
-
-    console.log("👤 User after credit deduction:", user);
 
     if (!user) {
       return res.status(403).json({
@@ -76,69 +72,34 @@ export const textMessageController = async (req, res) => {
     });
 
     /* ===================================================== */
-    /* ================= AI CALL (CASCADING) =============== */
+    /* ================= AI CALL (Python service) ========= */
     /* ===================================================== */
 
+    // Pass conversation history so Python can give context-aware replies
+    const history = chat.messages
+      .slice(0, -1) // exclude the user message we just pushed
+      .map(m => ({ role: m.role, content: m.content }));
+
     let aiContent;
-    const MODELS = [
-      "gemini-2.0-flash",
-      "gemini-2.0-flash-lite-preview-02-05",
-      "gemini-3-flash",
-      "gemini-3.1-flash-lite",
-      "gemini-2.5-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-1.5-flash",
-      "gemini-1.5-flash-8b",
-      "gemini-1.5-pro"
-    ];
-
-    let lastError;
-
-    for (const modelId of MODELS) {
-      try {
-        console.log(`🤖 [CASCADING] Attempting: ${modelId}`);
-
-        const systemInstruction =
-          "You are Prompto, a friendly assistant. Never mention Gemini. Keep answers concise.";
-
-        const aiResponse = await ai.models.generateContent({
-          model: modelId,
-          contents: [{ role: "user", parts: [{ text: `${systemInstruction}\n\n${prompt}` }] }],
-        });
-
-        aiContent = aiResponse.text;
-
-        if (aiContent && aiContent.trim()) {
-          aiContent = aiContent.trim();
-          console.log(`✅ [SUCCESS] Fulfilled by: ${modelId}`);
-          break; 
-        }
-      } catch (aiErr) {
-        lastError = aiErr;
-        const errMsg = aiErr.message || "Unknown Error";
-        console.warn(`⚠️ [FAILURE] ${modelId} failed: ${errMsg.substring(0, 50)}...`);
-        
-        // We continue to the NEXT model regardless of the error type 
-        // to ensure the user's request is completed if possible.
-        continue; 
-      }
-    }
-
-    if (!aiContent) {
-      console.error("🔥 ALL AI MODELS FAILED:", lastError);
-
-      /* Refund credit */
-      try {
-        await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } });
-        console.log("💰 Credit refunded");
-      } catch (refundErr) {
-        console.error("Refund failed:", refundErr);
-      }
-
+    try {
+      const { data: aiData } = await axios.post(
+        `${PYTHON_AI_URL}/chat`,
+        { prompt, history },
+        { timeout: 30000 }
+      );
+      aiContent = aiData.response;
+    } catch (aiErr) {
+      console.error("🔥 Python AI service error:", aiErr.message);
+      await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } });
       return res.status(500).json({
         success: false,
-        message: lastError?.message || "All AI models are currently unavailable",
+        message: aiErr.response?.data?.detail || "AI service is temporarily unavailable",
       });
+    }
+
+    if (!aiContent?.trim()) {
+      await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } });
+      return res.status(500).json({ success: false, message: "AI returned an empty response" });
     }
 
     /* ---------- SAVE AI REPLY ---------- */
@@ -152,8 +113,6 @@ export const textMessageController = async (req, res) => {
 
     chat.messages.push(reply);
     await chat.save();
-
-    console.log("✅ Message processed successfully");
 
     return res.status(200).json({
       success: true,
@@ -173,12 +132,72 @@ export const textMessageController = async (req, res) => {
 };
 
 /* ===================================================== */
+/* ================= RAG / STUDY AI =================== */
+/* ===================================================== */
+
+export const ragMessageController = async (req, res) => {
+  try {
+    const userId = req.user?._id;
+    const { chatId, prompt, ragMode = 'hybrid' } = req.body;
+
+    if (!chatId || !prompt?.trim()) {
+      return res.status(400).json({ success: false, message: 'Chat ID and prompt are required' });
+    }
+
+    const user = await User.findOneAndUpdate(
+      { _id: userId, credits: { $gte: 1 } },
+      { $inc: { credits: -1 } },
+      { returnDocument: 'after' }
+    );
+
+    if (!user) {
+      return res.status(403).json({ success: false, message: 'Not enough credits' });
+    }
+
+    const chat = await Chat.findOne({ _id: chatId, userId });
+    if (!chat) throw new Error('Chat not found or unauthorized');
+
+    if (chat.name === 'New Chat' || chat.messages.length === 0) {
+      const title = prompt.length > 40 ? prompt.substring(0, 40) + '...' : prompt;
+      chat.name = `📚 ${title}`;
+    }
+
+    chat.messages.push({ role: 'user', content: prompt, timestamp: Date.now(), isImage: false });
+
+    const ragHistory = chat.messages
+      .slice(0, -1)
+      .map(m => ({ role: m.role, content: m.content }));
+
+    let aiContent;
+    try {
+      const { data: aiData } = await axios.post(
+        `${PYTHON_AI_URL}/rag`,
+        { prompt, rag_mode: ragMode, user_id: userId.toString(), history: ragHistory },
+        { timeout: 60000 }
+      );
+      aiContent = aiData.response;
+    } catch (ragErr) {
+      console.error('RAG service error:', ragErr.message);
+      await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } });
+      return res.status(500).json({ success: false, message: 'Study AI is temporarily unavailable' });
+    }
+
+    const reply = { role: 'assistant', content: aiContent, timestamp: Date.now(), isImage: false };
+    chat.messages.push(reply);
+    await chat.save();
+
+    return res.status(200).json({ success: true, reply });
+  } catch (err) {
+    console.error('RAG controller error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/* ===================================================== */
 /* ================= IMAGE MESSAGE ===================== */
 /* ===================================================== */
 
 export const imageMessageController = async (req, res) => {
-  console.log("\n🖼 IMAGE REQUEST:", req.body);
-
   try {
     const userId = req.user?._id;
     const { chatId, prompt, isPublished } = req.body;
@@ -240,8 +259,6 @@ export const imageMessageController = async (req, res) => {
       `/ik-genimg-prompt-${encodedPrompt}` +
       `/quickgpt/${Date.now()}.png?tr=w-800,h-800`;
 
-    console.log("🌐 Attempting AI Generation:", imageUrl);
-
     let aiImage;
     try {
       aiImage = await axios.get(imageUrl, {
@@ -249,11 +266,7 @@ export const imageMessageController = async (req, res) => {
         timeout: 45000, 
       });
     } catch (fetchErr) {
-      console.error("❌ ImageKit AI Generation failed:", fetchErr.message);
-      
-      // Refund credits on failure
       await User.findByIdAndUpdate(userId, { $inc: { credits: 2 } });
-      console.log("💰 Credits refunded (Generation failed)");
       
       return res.status(500).json({
         success: false,
@@ -280,15 +293,12 @@ export const imageMessageController = async (req, res) => {
     chat.messages.push(reply);
     await chat.save();
 
-    console.log("✅ Image generated and stored successfully");
-
     return res.status(200).json({
       success: true,
       reply,
     });
 
   } catch (err) {
-    console.error("\n🔥 IMAGE CONTROLLER FAILURE:", err.message);
     return res.status(500).json({
       success: false,
       message: "Internal server error during image generation",
@@ -301,8 +311,6 @@ export const imageMessageController = async (req, res) => {
 /* ===================================================== */
 
 export const videoMessageController = async (req, res) => {
-  console.log("\n🎬 VIDEO REQUEST:", req.body);
-
   try {
     const userId = req.user?._id;
     const { chatId, prompt, isPublished } = req.body;
@@ -364,23 +372,15 @@ export const videoMessageController = async (req, res) => {
     chat.messages.push(reply);
     await chat.save();
 
-    console.log("✅ Video generated (demo)");
-
     return res.status(200).json({
       success: true,
       reply,
     });
 
   } catch (err) {
-    console.error("\n🔥 VIDEO FAILURE:", err);
-    
-    // Refund credits on failure
     try {
       await User.findByIdAndUpdate(req.user?._id, { $inc: { credits: 4 } });
-      console.log("💰 Credits refunded (Video failure)");
-    } catch (refundErr) {
-      console.error("Refund failed:", refundErr);
-    }
+    } catch (_) {}
 
     return res.status(500).json({
       success: false,

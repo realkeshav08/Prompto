@@ -1,81 +1,137 @@
-# 🚀 Prompto | The Advanced AI Workspace
+# Prompto | The Advanced AI Workspace
 
-Prompto is a premium, full-stack AI platform designed for high-performance text and image generation. Built with a modern "Glassmorphic" aesthetic and a robust "Credit-as-a-Service" architecture, it provides a seamless interface for interacting with state-of-the-art neural models.
-
----
-
-## 💎 Key Features
-
-- **🧠 Dual AI Engines**: Seamlessly switch between text-based reasoning (Google Gemini) and high-fidelity image generation (ImageKit AI).
-- **💳 Credit-as-a-Service**: Integrated billing system with Stripe for purchasing credits, featuring automated deduction and refund logic.
-- **🎨 Showcase Gallery**: A community-driven space to publish and share neural masterpieces.
-- **✨ Premium UI/UX**: Ultra-modern design using Tailwind CSS v4, featuring smooth transitions, background gradients, and a responsive glassmorphic layout.
-- **🔒 Secure Architecture**: JWT-based authentication, Bcrypt encryption, and secure environment variable management.
+Prompto is a full-stack AI platform for text generation, image creation, and RAG-powered Study AI. Built with a modern glassmorphic aesthetic and a credit-based billing system.
 
 ---
 
-## 🛠 Tech Stack
+## Features
+
+- **Multi-Modal AI** — Text chat, image generation, video, and Study AI (RAG) modes
+- **Study AI** — Upload PDFs, DOCX, TXT files or paste URLs; ask questions grounded in your own materials using Retrieval-Augmented Generation
+- **Conversation Memory** — Multi-turn chat history passed to the AI for context-aware responses
+- **Credit System** — Stripe-integrated billing with per-feature credit costs and automatic refunds on failure
+- **Community Gallery** — Publish and browse AI-generated images
+- **Secure Auth** — JWT authentication with bcrypt password hashing and OTP-based password recovery
+
+---
+
+## Tech Stack
 
 ### Frontend
-- **Framework**: [React 19](https://react.dev/)
-- **Build Tool**: [Vite 8](https://vitejs.dev/)
-- **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
-- **State Management**: React Context API
-- **Utilities**: Axios, React Router 7, React Hot Toast, PrismJS
+- React 19, Vite 8, Tailwind CSS v4
+- React Router 7, Axios, React Markdown, React Hot Toast
 
-### Backend
-- **Runtime**: Node.js
-- **Framework**: Express 5
-- **Database**: MongoDB (via Mongoose)
-- **AI Integration**: Google GenAI (Gemini), ImageKit SDK
-- **Payments**: Stripe API & Webhooks
+### Backend (Node.js)
+- Express 5, MongoDB + Mongoose
+- LangChain (`@langchain/mongodb`, `@langchain/google-genai`) for document ingestion
+- ImageKit SDK, Stripe API, Nodemailer
+
+### AI Microservice (Python)
+- FastAPI + Uvicorn
+- Google Gemini API (`google-genai`) with 7-model cascading fallback
+- LangChain + MongoDB Atlas Vector Search for RAG
+- Embedding model: `gemini-embedding-001` (3072 dimensions)
 
 ---
 
-## 🚀 Getting Started
+## Architecture
+
+```
+Client (React) → Node.js API → Python FastAPI
+                     ↓               ↓
+                  MongoDB        Gemini AI
+                     ↓
+            MongoDB Atlas Vector Search
+```
+
+The Node.js server handles auth, credits, and data persistence. All AI inference is delegated to the Python microservice.
+
+---
+
+## Getting Started
 
 ### Prerequisites
-- Node.js (v18+)
-- MongoDB Cluster
-- Gemini API Key
-- Stripe Account
-- ImageKit Account
+- Node.js v18+
+- Python 3.10+
+- MongoDB Atlas cluster with a Vector Search index on `document_chunks`
+- Gemini API key
+- Stripe account
+- ImageKit account
 
-### Installation
+### 1. Clone the repo
+```bash
+git clone https://github.com/realkeshav08/Prompto.git
+cd Prompto
+```
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/realkeshav08/Prompto.git
-   cd Prompto
-   ```
+### 2. Python AI service
+```bash
+cd python-service
+pip install -r requirements.txt
+cp .env.example .env   # fill in your values
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
+```
 
-2. **Setup Backend**
-   - Navigate to `/server`
-   - Install dependencies: `npm install`
-   - Create `.env` file with the following keys:
-     ```env
-     JWT_SECRET=your_secret
-     MONGODB_URI=your_mongodb_uri
-     GEMINI_API_KEY=your_gemini_key
-     IMAGEKIT_PUBLIC_KEY=...
-     IMAGEKIT_PRIVATE_KEY=...
-     IMAGEKIT_URL_ENDPOINT=...
-     STRIPE_SECRET_KEY=...
-     STRIPE_WEBHOOK_SECRET=...
-     ```
-   - Start dev server: `npm run dev`
+### 3. Node.js backend
+```bash
+cd server
+npm install
+cp .env.example .env   # fill in your values
+npm run dev
+```
 
-3. **Setup Frontend**
-   - Navigate to `/client`
-   - Install dependencies: `npm install`
-   - Create `.env` file:
-     ```env
-     VITE_SERVER_URL=http://localhost:3000
-     ```
-   - Start dev server: `npm run dev`
+### 4. React frontend
+```bash
+cd client
+npm install
+cp .env.example .env   # fill in your values
+npm run dev
+```
+
+Open **http://localhost:5173**
 
 ---
 
-## 📝 License
+## MongoDB Atlas Vector Search Index
 
-This project is open-source. Created by [realkeshav08](https://github.com/realkeshav08).
+Create a Vector Search index named `vector_index` on the `document_chunks` collection:
+
+```json
+{
+  "fields": [
+    {
+      "type": "vector",
+      "path": "embedding",
+      "numDimensions": 3072,
+      "similarity": "cosine"
+    },
+    { "type": "filter", "path": "userId" },
+    { "type": "filter", "path": "isGlobal" }
+  ]
+}
+```
+
+---
+
+## Credit Costs
+
+| Feature | Credits |
+|---------|---------|
+| Text chat | 1 |
+| Study AI (RAG) | 1 |
+| Image generation | 2 |
+| Video generation | 4 |
+
+---
+
+## Production Deployment
+
+- **Frontend + Node.js backend** → Vercel
+- **Python microservice** → Railway, Render, or any VPS
+- Set `PYTHON_AI_URL` in the server environment to point to your deployed Python service
+
+---
+
+## License
+
+Open-source. Created by [realkeshav08](https://github.com/realkeshav08).
