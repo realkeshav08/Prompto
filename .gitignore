@@ -35,6 +35,7 @@ Trash/
 repo_tree.txt
 download.png
 package-lock.json
+notes/
 .gemini/
 .antigravity/
 .claude/
