@@ -74,27 +74,31 @@ export const AppContextProvider = ({ children }) => {
 
   /* ---------------- USER ---------------- */
 
-  const fetchUser = useCallback(async () => {
+  // silent = background refresh (e.g. after payment / "Sync Balance"):
+  // updates `user` WITHOUT toggling loadingUser, so it never re-triggers the
+  // boot splash gate — which would unmount/remount the caller in a loop.
+  const fetchUser = useCallback(async ({ silent = false } = {}) => {
     try {
-      setLoadingUser(true)
-      // Timeout so a cold-starting backend can't hang the app forever on the
-      // "Synchronizing session" screen. 75s comfortably covers a cold start
-      // (~50s); a genuine hang fails here and the app falls through instead.
+      if (!silent) setLoadingUser(true)
+      // Timeout so a cold-starting backend can't hang the boot screen forever.
       const { data } = await api.get('/api/user/data', { timeout: 75000 })
 
       if (data.success) {
         setUser(data.user)
-      } else {
+      } else if (!silent) {
         toast.error(data.message)
         setUser(null)
       }
     } catch (err) {
-      if (err.response?.status !== 401) {
-        toast.error(err.response?.data?.message || err.message)
+      // On a silent refresh, errors are non-fatal — keep the current user.
+      if (!silent) {
+        if (err.response?.status !== 401) {
+          toast.error(err.response?.data?.message || err.message)
+        }
+        setUser(null)
       }
-      setUser(null)
     } finally {
-      setLoadingUser(false)
+      if (!silent) setLoadingUser(false)
     }
   }, [])
 

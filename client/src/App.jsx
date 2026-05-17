@@ -19,9 +19,11 @@ const PaymentReturn = () => {
   const { fetchUser, navigate } = useAppContext()
 
   useEffect(() => {
-    fetchUser()
-    const t = setTimeout(() => navigate('/credits'), 2500)
-    return () => clearTimeout(t)
+    // Refresh credits SILENTLY (no loadingUser toggle → no splash-gate loop),
+    // giving the Stripe webhook a moment to land, then go to the Credits page.
+    const refresh = setTimeout(() => fetchUser({ silent: true }), 1500)
+    const go = setTimeout(() => navigate('/credits'), 3000)
+    return () => { clearTimeout(refresh); clearTimeout(go) }
   }, [fetchUser, navigate])
 
   return <Loading type="nav" />

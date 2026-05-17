@@ -72,7 +72,7 @@ const Credits = () => {
 
         <button
           onClick={() => {
-            toast.promise(fetchUser(), {
+            toast.promise(fetchUser({ silent: true }), {
               loading: 'Checking server for latest balance…',
               success: 'Balance synchronized',
               error: 'Sync failed'
