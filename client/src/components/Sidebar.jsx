@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { useAppContext } from '../context'
 import { assets } from '../assets/assets'
 import toast from 'react-hot-toast'
+import Settings from './Settings'
 
 function SidebarItem({ icon, label, sub, onClick }) {
   return (
@@ -41,18 +42,15 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
     createNewChat,
     axios,
     setChats,
-    setToken,
     token,
     fetchUsersChats
   } = useAppContext()
 
   const [search, setSearch] = useState('')
-
-  const logout = () => {
-    localStorage.removeItem('token')
-    setToken(null)
-    toast.success('Logged out')
-  }
+  const [editingId, setEditingId] = useState(null)
+  const [editValue, setEditValue] = useState('')
+  const [showSettings, setShowSettings] = useState(false)
+  const cancelRename = useRef(false)
 
   const deleteChat = async (e, chatId) => {
     try {
@@ -80,8 +78,37 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
     }
   }
 
+  const startRename = (chat) => {
+    setEditingId(chat._id)
+    setEditValue(chat.name || '')
+  }
+
+  const saveRename = async (chatId) => {
+    const newName = editValue.trim()
+    setEditingId(null)
+
+    const current = chats.find(c => c._id === chatId)
+    if (!newName || newName === current?.name) return
+
+    try {
+      const { data } = await axios.post('/api/chat/rename', { chatId, name: newName })
+      if (data.success) {
+        setChats(prev => prev.map(c => (c._id === chatId ? { ...c, name: data.name } : c)))
+        if (selectedChat?._id === chatId) {
+          setSelectedChat(prev => (prev ? { ...prev, name: data.name } : prev))
+        }
+        toast.success('Chat renamed')
+      } else {
+        toast.error(data.message || 'Rename failed')
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Rename failed')
+    }
+  }
+
   try {
     return (
+      <>
       <aside
         className={`
           h-screen w-80 flex flex-col
@@ -95,7 +122,7 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
         {/* 1. Header Section (Fixed) */}
         <div className="flex-none">
           {/* Brand */}
-          <div className="flex items-center gap-3 mb-6 px-2 cursor-pointer group" onClick={() => navigate('/')}>
+          <div className="flex items-center gap-3 mb-6 px-2 cursor-pointer group" onClick={createNewChat}>
             <div className="w-10 h-10 flex items-center justify-center group-hover:scale-110 transition-transform">
               <img src={assets.logo} className="w-8 rounded-lg" alt="logo" />
             </div>
@@ -167,11 +194,11 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
           </div>
         ) : (
           (() => {
-            const searchLower = search.toLowerCase()
+            const query = search.trim().toLowerCase()
             const filtered = chats.filter(chat => {
               if (!chat) return false
-              const nameMatch = chat.name?.toLowerCase().includes(searchLower)
-              const msgMatch = chat.messages?.some(m => m.content?.toLowerCase().includes(searchLower))
+              const nameMatch = chat.name?.toLowerCase().includes(query)
+              const msgMatch = chat.messages?.some(m => m.content?.toLowerCase().includes(query))
               return nameMatch || msgMatch
             })
 
@@ -179,7 +206,7 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
               return (
                 <div className="py-10 text-center animate-fade-in">
                   <p className="text-[10px] font-bold text-muted uppercase tracking-widest opacity-60">
-                    No results match<br />"{search}"
+                    No results match<br />"{search.trim()}"
                   </p>
                 </div>
               )
@@ -187,7 +214,6 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
 
             return filtered.map(chat => {
               if (!chat) return null
-              console.log("Rendering chat item:", chat._id, chat.name);
               const isActive = selectedChat?._id === chat._id
               const previewText = (chat.name && chat.name !== 'New Chat' && chat.name !== 'New Session' 
                 ? chat.name 
@@ -209,7 +235,7 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
                     border bg-panel/30
                     ${isActive
                       ? 'bg-accent/[0.08] border-accent/20'
-                      : 'border-transparent hover:bg-accent/[0.04] hover:border-accent/10'
+                      : 'border-transparent hover:bg-accent/10 hover:border-accent/25'
                     }
                   `}
                 >
@@ -220,12 +246,35 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
                   `} />
                   
                   <div className="flex-1 min-w-0 pr-2">
-                    <p className={`
-                      text-[13px] font-bold tracking-tight transition-colors break-words line-clamp-1
-                      ${isActive ? 'text-accent' : 'text-text group-hover:text-accent'}
-                    `}>
-                      {previewText || 'No Title'}
-                    </p>
+                    {editingId === chat._id ? (
+                      <input
+                        value={editValue}
+                        autoFocus
+                        maxLength={100}
+                        onChange={e => setEditValue(e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { e.preventDefault(); e.target.blur() }
+                          if (e.key === 'Escape') { cancelRename.current = true; e.target.blur() }
+                        }}
+                        onBlur={() => {
+                          if (cancelRename.current) {
+                            cancelRename.current = false
+                            setEditingId(null)
+                            return
+                          }
+                          saveRename(chat._id)
+                        }}
+                        className="w-full bg-accent-soft border border-accent/40 rounded-lg px-2 py-1 text-[13px] font-bold text-text outline-none focus:border-accent/70"
+                      />
+                    ) : (
+                      <p className={`
+                        text-[13px] font-bold tracking-tight transition-colors break-words line-clamp-1
+                        ${isActive ? 'text-accent' : 'text-text group-hover:text-accent'}
+                      `}>
+                        {previewText || 'No Title'}
+                      </p>
+                    )}
                     <p className="text-[9px] text-muted font-black uppercase tracking-widest mt-1 opacity-80">
                       {(() => {
                         try {
@@ -238,18 +287,28 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
                     </p>
                   </div>
 
-                  <button
-                    onClick={e => deleteChat(e, chat._id)}
-                    className="
-                      p-1.5 rounded-lg
-                      opacity-0 group-hover:opacity-100
-                      hover:bg-red-500/10
-                      transition-all duration-300
-                      z-20
-                    "
-                  >
-                    <img src={assets.bin_icon} className="w-3.5 dark:invert opacity-30 hover:opacity-100" />
-                  </button>
+                  {editingId !== chat._id && (
+                    <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-300 z-20">
+                      <button
+                        onClick={e => { e.stopPropagation(); startRename(chat) }}
+                        className="p-1.5 rounded-lg bg-panel border border-border shadow-sm text-text/80 hover:text-white hover:bg-accent hover:border-accent transition-all"
+                        title="Rename chat"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={e => deleteChat(e, chat._id)}
+                        className="p-1.5 rounded-lg bg-panel border border-border shadow-sm text-red-400 hover:text-white hover:bg-red-500 hover:border-red-500 transition-all"
+                        title="Delete chat"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             })
@@ -279,19 +338,25 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
 
         {/* User & Theme Combined Row */}
         <div className="flex items-center gap-2">
-          <div className="flex-1 flex items-center gap-2.5 p-2 bg-panel border border-border rounded-xl shadow-sm">
+          <button
+            onClick={() => setShowSettings(true)}
+            className="flex-1 flex items-center gap-2.5 p-2 bg-panel border border-border rounded-xl shadow-sm hover:border-accent/40 hover:bg-accent/5 transition-all group"
+            title="Settings"
+          >
             <div className="w-7 h-7 rounded-lg bg-accent/20 flex items-center justify-center overflow-hidden">
               <img src={assets.user_icon} className="w-4 invert dark:invert-0" alt="user" />
             </div>
-            <p className="text-[11px] font-black truncate text-text flex-1">
+            <p className="text-[11px] font-black truncate text-text flex-1 text-left">
               {user ? user.name : 'Guest'}
             </p>
-            {user && (
-              <button onClick={logout} className="p-1 hover:bg-muted/10 rounded-lg">
-                <img src={assets.logout_icon} className="w-3 opacity-60" />
-              </button>
-            )}
-          </div>
+            <svg
+              className="w-4 h-4 text-muted group-hover:text-accent group-hover:rotate-45 transition-all duration-300"
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
           
           <div
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -316,6 +381,8 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
           <img src={assets.close_icon} className="w-5 dark:invert" />
         </button>
       </aside>
+      <Settings isOpen={showSettings} onClose={() => setShowSettings(false)} />
+      </>
     )
   } catch (e) {
     console.error("Sidebar critical error:", e)

@@ -54,17 +54,20 @@ const Login = () => {
           setResetStep(2)
         } else toast.error(data.message)
       } else if (resetStep === 2) {
-        const { data } = await axios.post('/api/user/verify-otp', { email, otp })
+        const { data } = await axios.post('/api/user/verify-otp', { email, otp: otp.trim() })
         if (data.success) {
           toast.success(data.message)
           setResetStep(3)
         } else toast.error(data.message)
       } else if (resetStep === 3) {
-        const { data } = await axios.post('/api/user/reset-password', { email, otp, newPassword })
+        const { data } = await axios.post('/api/user/reset-password', { email, otp: otp.trim(), newPassword })
         if (data.success) {
           toast.success(data.message)
           setIsForgot(false)
           setResetStep(1)
+          setOtp('')
+          setNewPassword('')
+          setPassword('')
           setState('login')
         } else toast.error(data.message)
       }
@@ -131,7 +134,7 @@ const Login = () => {
           {isForgot && resetStep >= 2 && (
             <div className="space-y-2 animate-slide-up">
               <label className="block text-[10px] font-black uppercase tracking-widest text-muted ml-1">Recovery Code</label>
-              <input value={otp} onChange={e => setOtp(e.target.value)} type="text" required placeholder="Enter 6-digit code" disabled={resetStep > 2}
+              <input value={otp} onChange={e => setOtp(e.target.value.replace(/\s/g, ''))} type="text" inputMode="numeric" required placeholder="Enter 6-digit code" disabled={resetStep > 2}
                 className="w-full px-5 py-3.5 bg-accent-soft/30 border border-border/50 rounded-2xl text-sm font-medium outline-none focus:border-accent/40 focus:ring-4 focus:ring-accent/5 transition-all disabled:opacity-50" />
             </div>
           )}
@@ -149,7 +152,7 @@ const Login = () => {
               <div className="flex justify-between items-center px-1">
                 <label className="block text-[10px] font-black uppercase tracking-widest text-muted">Secret Password</label>
                 {state === 'login' && (
-                  <span onClick={() => setIsForgot(true)} className="text-[10px] font-bold text-accent cursor-pointer hover:underline">Forgot?</span>
+                  <span onClick={() => { setIsForgot(true); setResetStep(1); setOtp(''); setNewPassword(''); setPassword(''); }} className="text-[10px] font-bold text-accent cursor-pointer hover:underline">Forgot?</span>
                 )}
               </div>
               <input value={password} onChange={e => setPassword(e.target.value)} type="password" required placeholder="••••••••"
@@ -170,7 +173,7 @@ const Login = () => {
         ) : (
           <p className="text-[10px] text-muted mt-8 mb-6 text-center font-bold uppercase tracking-wider">
             Remembered your password? 
-            <span onClick={() => { setIsForgot(false); setResetStep(1); }}
+            <span onClick={() => { setIsForgot(false); setResetStep(1); setOtp(''); setNewPassword(''); }}
               className="text-accent font-black cursor-pointer hover:underline underline-offset-4 decoration-2"> Back to Login</span>
           </p>
         )}

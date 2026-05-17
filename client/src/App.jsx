@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 
@@ -13,77 +13,62 @@ import { useAppContext } from './context'
 import { assets } from './assets/assets'
 import './assets/prism.css'
 
+// Landing target for Stripe's success_url after a completed payment.
+// Refreshes the user (so new credits show) then routes to the Credits page.
+const PaymentReturn = () => {
+  const { fetchUser, navigate } = useAppContext()
+
+  useEffect(() => {
+    fetchUser()
+    const t = setTimeout(() => navigate('/credits'), 2500)
+    return () => clearTimeout(t)
+  }, [fetchUser, navigate])
+
+  return <Loading type="nav" />
+}
+
 const App = () => {
   const { user, loadingUser, token } = useAppContext()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const { pathname } = useLocation()
-  
-  // Splash states
-  const [showSplash, setShowSplash] = useState(true)
-  const [isMinimal, setIsMinimal] = useState(false)
-  const [isSyncing, setIsSyncing] = useState(false)
+  const location = useLocation()
+  const { pathname } = location
 
-  // 🛡️ LOGIC: Manage the initial "Entry Sequence" (Sync -> Welcome or Guest)
-  React.useEffect(() => {
-    // 1. Still Bootstrapping User
-    if (loadingUser && token) {
-      setIsSyncing(true)
-      setShowSplash(true)
-      return;
-    }
+  // Splash overlay:
+  //   'welcome' — first visit this browser session (1.5s)
+  //   'reload'  — page refresh (1s)
+  //   'nav'     — in-app section switch (1s)
+  const [splash, setSplash] = useState(() =>
+    sessionStorage.getItem('promptoVisited') ? 'reload' : 'welcome'
+  )
 
-    const hasWelcomed = sessionStorage.getItem('hasWelcomed');
+  // Initial page load — time the welcome / reload splash.
+  useEffect(() => {
+    if (splash !== 'welcome' && splash !== 'reload') return
+    // Hold the splash until a stored session finishes resolving, so the
+    // welcome can greet the user by name.
+    if (loadingUser && token) return
 
-    // 2. Handle GUEST (No token, or finished loading and no user)
-    if (!token || (!loadingUser && !user)) {
-      setIsMinimal(false)
-      setIsSyncing(false)
-      const timer = setTimeout(() => setShowSplash(false), 2000)
-      return () => clearTimeout(timer)
-    }
+    sessionStorage.setItem('promptoVisited', '1')
+    const duration = splash === 'welcome' ? 1500 : 1000
+    const t = setTimeout(() => setSplash(null), duration)
+    return () => clearTimeout(t)
+  }, [splash, loadingUser, token])
 
-    // 3. Handle AUTHENTICATED USER
-    if (user && !loadingUser) {
-      if (!hasWelcomed) {
-        // Enforce the 1s Phase 1 (Syncing)
-        setIsSyncing(true)
-        const phase1 = setTimeout(() => {
-          setIsSyncing(false)
-          setIsMinimal(false)
-          // Then the 2s Phase 2 (Welcome)
-          const phase2 = setTimeout(() => {
-            setShowSplash(false)
-            sessionStorage.setItem('hasWelcomed', 'true')
-          }, 2000)
-          return () => clearTimeout(phase2)
-        }, 1000)
-        return () => clearTimeout(phase1)
-      } else {
-        // Already welcomed in this session, handle as 1s refresh splash
-        setIsMinimal(true)
-        setIsSyncing(false)
-        const timer = setTimeout(() => setShowSplash(false), 1000)
-        return () => clearTimeout(timer)
-      }
-    }
-  }, [user, loadingUser, token])
-
-  // 🛡️ LOGIC: Manage "Navigation Transitions"
-  const prevPath = React.useRef(pathname)
-  React.useEffect(() => {
-    // Only trigger if the path actually changed AND we've already done the welcome
-    if (pathname !== prevPath.current && sessionStorage.getItem('hasWelcomed')) {
-      prevPath.current = pathname
-      setIsMinimal(true)
-      setShowSplash(true)
-      const timer = setTimeout(() => setShowSplash(false), 1000)
-      return () => clearTimeout(timer)
-    }
-  }, [pathname])
+  // In-app section switches — brief 1s loading splash.
+  const prevPath = useRef(pathname)
+  useEffect(() => {
+    if (pathname === prevPath.current) return
+    prevPath.current = pathname
+    // Some navigations opt out of the splash (e.g. the out-of-credits redirect).
+    if (location.state?.skipSplash) return
+    setSplash('nav')
+    const t = setTimeout(() => setSplash(null), 1000)
+    return () => clearTimeout(t)
+  }, [pathname, location.state])
 
   // Global loading gate
-  if (showSplash || (loadingUser && token)) {
-    return <Loading minimal={isMinimal} isSyncing={isSyncing} />
+  if (splash || (loadingUser && token)) {
+    return <Loading type={splash || 'reload'} />
   }
 
   return (
@@ -102,7 +87,7 @@ const App = () => {
           onClick={() => setIsMenuOpen(true)}
           className="
             md:hidden
-            absolute top-6 left-6 z-30
+            absolute top-6 right-6 z-30
             w-8 h-8
             cursor-pointer
             invert dark:invert-0 opacity-80 hover:opacity-100 transition-opacity
@@ -123,6 +108,7 @@ const App = () => {
               <Route path="/" element={<ChatBox />} />
               <Route path="/credits" element={<Credits />} />
               <Route path="/community" element={<Community />} />
+              <Route path="/loading" element={<PaymentReturn />} />
             </Routes>
           </main>
         </div>

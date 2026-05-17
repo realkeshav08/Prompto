@@ -2,16 +2,17 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useAppContext } from '../context'
 import toast from 'react-hot-toast'
 
-const TYPE_ICON = { pdf: '📄', txt: '📝', docx: '📋', url: '🌐' }
+const TYPE_ICON = { pdf: '📄', txt: '📝', docx: '📋', url: '🌐', image: '🖼️' }
 
 const DocumentUpload = ({ isOpen, onClose }) => {
-  const { axios, token } = useAppContext()
+  const { axios, token, user } = useAppContext()
   const fileRef = useRef(null)
 
   const [docs, setDocs] = useState([])
   const [url, setUrl] = useState('')
   const [uploading, setUploading] = useState(false)
   const [deleting, setDeleting] = useState(null)
+  const [isGlobal, setIsGlobal] = useState(false)
 
   useEffect(() => {
     if (isOpen) fetchDocs()
@@ -34,6 +35,7 @@ const DocumentUpload = ({ isOpen, onClose }) => {
     try {
       const form = new FormData()
       form.append('file', file)
+      form.append('isGlobal', String(isGlobal))
       const { data } = await axios.post('/api/document/upload', form, {
         headers: { Authorization: token, 'Content-Type': 'multipart/form-data' },
       })
@@ -57,7 +59,7 @@ const DocumentUpload = ({ isOpen, onClose }) => {
     try {
       const { data } = await axios.post(
         '/api/document/upload',
-        { url: url.trim() },
+        { url: url.trim(), isGlobal },
         { headers: { Authorization: token } }
       )
       if (data.success) {
@@ -104,7 +106,7 @@ const DocumentUpload = ({ isOpen, onClose }) => {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-black text-text">📚 Study Materials</h2>
-            <p className="text-xs text-muted mt-0.5">Upload PDF, TXT, DOCX or paste a URL</p>
+            <p className="text-xs text-muted mt-0.5">Upload PDF, TXT, DOCX, image or paste a URL — scanned files are OCR-read</p>
           </div>
           <button
             onClick={onClose}
@@ -124,7 +126,7 @@ const DocumentUpload = ({ isOpen, onClose }) => {
           <input
             ref={fileRef}
             type="file"
-            accept=".pdf,.txt,.docx"
+            accept=".pdf,.txt,.docx,.png,.jpg,.jpeg,.webp"
             className="hidden"
             onChange={e => handleFileUpload(e.target.files[0])}
           />
@@ -137,7 +139,7 @@ const DocumentUpload = ({ isOpen, onClose }) => {
             <>
               <p className="text-3xl mb-2">📂</p>
               <p className="text-sm font-bold text-text">Drop file here or click to browse</p>
-              <p className="text-xs text-muted mt-1">PDF · TXT · DOCX · up to 10 MB</p>
+              <p className="text-xs text-muted mt-1">PDF · TXT · DOCX · Image · up to 10 MB</p>
             </>
           )}
         </div>
@@ -159,6 +161,21 @@ const DocumentUpload = ({ isOpen, onClose }) => {
           </button>
         </form>
 
+        {/* Global toggle — admin only (shared pool affects every user) */}
+        {user?.isAdmin && (
+          <label className="flex items-center gap-2.5 px-1 cursor-pointer select-none -mt-1">
+            <input
+              type="checkbox"
+              checked={isGlobal}
+              onChange={e => setIsGlobal(e.target.checked)}
+              className="accent-accent w-4 h-4 rounded"
+            />
+            <span className="text-xs font-semibold text-muted">
+              Make available to everyone <span className="text-accent font-bold">(Global)</span>
+            </span>
+          </label>
+        )}
+
         {/* Document list */}
         {docs.length > 0 && (
           <div className="flex flex-col gap-2 overflow-y-auto custom-scrollbar pr-1">
@@ -175,6 +192,7 @@ const DocumentUpload = ({ isOpen, onClose }) => {
                   <p className="text-sm font-semibold text-text truncate">{doc.fileName}</p>
                   <p className="text-[10px] text-muted">
                     {doc.chunkCount} chunks · {doc.fileType.toUpperCase()}
+                    {doc.isGlobal && <span className="text-accent font-bold"> · 🌐 Global</span>}
                   </p>
                 </div>
                 <button

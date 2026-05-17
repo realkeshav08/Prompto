@@ -1,17 +1,20 @@
 import nodemailer from 'nodemailer';
 
+// Sender Gmail account — configurable via env, with a fallback for existing setups.
+const EMAIL_USER = process.env.EMAIL_USER || 'asuskeshavkashyap@gmail.com';
+
 export const sendRecoveryEmail = async (to, otp) => {
   try {
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: 'asuskeshavkashyap@gmail.com',
-        pass: process.env.EMAIL_PASS, // User must provide App Password in .env
+        user: EMAIL_USER,
+        pass: process.env.EMAIL_PASS, // App Password from .env
       },
     });
 
     const mailOptions = {
-      from: `"Prompto Security" <asuskeshavkashyap@gmail.com>`,
+      from: `"Prompto Security" <${EMAIL_USER}>`,
       to,
       subject: '🔒 Your Account Recovery Code',
       html: `

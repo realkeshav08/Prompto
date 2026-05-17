@@ -6,10 +6,21 @@ import Message from './Message'
 import DocumentUpload from './DocumentUpload'
 import toast from 'react-hot-toast'
 
+// True when the document was loaded via a hard browser reload.
+// Module-scoped so it survives ChatBox remounts but is consumed only once
+// per page load (see the scroll effect below).
+let pendingReloadScroll = (() => {
+  try {
+    return performance.getEntriesByType('navigation')[0]?.type === 'reload'
+  } catch {
+    return false
+  }
+})()
+
 const ChatBox = () => {
   const navigate = useNavigate()
   const containerRef = useRef(null)
-  const { selectedChat, user, axios, token, setUser, setChats } = useAppContext()
+  const { selectedChat, setSelectedChat, user, axios, setUser, setChats } = useAppContext()
 
   const [messages, setMessages] = useState([])
   const [prompt, setPrompt] = useState('')
@@ -19,62 +30,74 @@ const ChatBox = () => {
   const [loadingChatId, setLoadingChatId] = useState(null)
   const [showUpload, setShowUpload] = useState(false)
 
-  const onSubmit = async (e) => {
+  // The server generates a clean AI title for the first exchange in the
+  // background; pull it in and swap it into the sidebar once it's ready.
+  const refreshChatTitle = async (chatId) => {
     try {
-      e.preventDefault()
-      if (!user) return toast('Login to send message')
-      if (!selectedChat) return toast.error('No active session. Please start a new session.')
+      const { data } = await axios.get(`/api/chat/${chatId}`)
+      const newName = data?.chat?.name
+      if (data?.success && newName) {
+        setChats(prev => prev.map(c => (c._id === chatId ? { ...c, name: newName } : c)))
+        setSelectedChat(prev => (prev?._id === chatId ? { ...prev, name: newName } : prev))
+      }
+    } catch {
+      // Non-fatal — the title will sync on the next chat list load.
+    }
+  }
 
-      const currentChatId = selectedChat._id
-      const promptCopy = prompt
-      setPrompt('')
-      
-      setLoadingChatId(currentChatId)
+  // Core send routine — shared by the input form and the resend button.
+  const sendPrompt = async ({ chatId, text, sendMode, sendRagMode, sendIsPublished }) => {
+    setLoadingChatId(chatId)
 
-      const userMsg = { role: 'user', content: promptCopy, timestamp: Date.now(), isImage: false }
-      
-      // 1. Update local messages instantly
-      setMessages(prev => [...prev, userMsg])
+    // First exchange = no AI reply exists in this chat yet.
+    const isFirstMessage = !messages.some(m => m.role === 'assistant')
 
-      // 2. Update sidebar instantly (so it's persistent if we switch away)
-      setChats(prev => {
-        const updated = prev.map(c => {
-          if (c._id === currentChatId) {
-            let chatName = (c.name === 'New Chat' || c.name === 'New Session' || c.messages.length === 0) 
-              ? (promptCopy.length > 40 ? promptCopy.substring(0, 40) + '...' : promptCopy)
-              : c.name;
+    const userMsg = { role: 'user', content: text, timestamp: Date.now(), isImage: false }
 
-            return {
-              ...c,
-              name: chatName,
-              messages: [...c.messages, userMsg],
-              updatedAt: new Date().toISOString()
-            }
-          }
-          return c
-        })
-        return updated.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+    // Optimistically show the message + update the sidebar.
+    setMessages(prev => [...prev, userMsg])
+    setChats(prev => {
+      const updated = prev.map(c => {
+        if (c._id === chatId) {
+          const chatName = (c.name === 'New Chat' || c.name === 'New Session' || c.messages.length === 0)
+            ? (text.length > 40 ? text.substring(0, 40) + '...' : text)
+            : c.name
+          return { ...c, name: chatName, messages: [...c.messages, userMsg], updatedAt: new Date().toISOString() }
+        }
+        return c
       })
+      return updated.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+    })
 
-      const endpoint = mode === 'study' ? '/api/message/rag' : `/api/message/${mode}`
-      const payload = mode === 'study'
-        ? { chatId: currentChatId, prompt: promptCopy, ragMode }
-        : { chatId: currentChatId, prompt: promptCopy, isPublished }
+    // Flag the optimistic message as failed so a Resend button appears,
+    // and roll it back out of the sidebar (it was never saved server-side).
+    const markFailed = () => {
+      setMessages(prev => prev.map(m =>
+        m.timestamp === userMsg.timestamp && m.role === 'user'
+          ? { ...m, failed: true, retry: { sendMode, sendRagMode, sendIsPublished } }
+          : m
+      ))
+      setChats(prev => prev.map(c =>
+        c._id === chatId
+          ? { ...c, messages: c.messages.filter(m => m.timestamp !== userMsg.timestamp || m.role !== 'user') }
+          : c
+      ))
+    }
 
-      const { data } = await axios.post(endpoint, payload, {
-        headers: { Authorization: token },
-      })
+    try {
+      const endpoint = sendMode === 'study' ? '/api/message/rag' : `/api/message/${sendMode}`
+      const payload = sendMode === 'study'
+        ? { chatId, prompt: text, ragMode: sendRagMode }
+        : { chatId, prompt: text, isPublished: sendIsPublished }
+
+      const { data } = await axios.post(endpoint, payload)
 
       if (data.success) {
-        // 3. Only update local view if we are STILL on the same chat
-        if (selectedChat?._id === currentChatId) {
-          setMessages(prev => [...prev, data.reply])
-        }
+        setMessages(prev => [...prev, data.reply])
 
-        // 4. Sync Sidebar with AI response
         setChats(prev => {
           const updated = prev.map(c => {
-            if (c._id === currentChatId) {
+            if (c._id === chatId) {
               return {
                 ...c,
                 messages: [...c.messages.filter(m => m.timestamp !== userMsg.timestamp || m.role !== 'user'), userMsg, data.reply],
@@ -88,37 +111,113 @@ const ChatBox = () => {
 
         setUser(prev => ({
           ...prev,
-          credits: prev.credits - (mode === 'video' ? 4 : mode === 'image' ? 2 : 1)
-          // study mode costs 1 credit (falls through to the final :1)
+          // video 4 · image 2 · study 2 · text 1
+          credits: prev.credits - (sendMode === 'video' ? 4 : sendMode === 'image' ? 2 : sendMode === 'study' ? 2 : 1)
         }))
+
+        // First exchange — the server generates a clean AI title in the
+        // background; pull it in once ready (text & study modes only).
+        if (isFirstMessage && (sendMode === 'text' || sendMode === 'study')) {
+          setTimeout(() => refreshChatTitle(chatId), 3000)
+          setTimeout(() => refreshChatTitle(chatId), 7000)
+        }
       } else {
         toast.error(data.message)
-        setPrompt(promptCopy)
+        markFailed()
       }
     } catch (err) {
-      const msg = err.response?.data?.message || err.message
-      toast.error(msg)
-      
-      // If insufficient credits, redirect to pricing/credits page
+      toast.error(err.response?.data?.message || err.message)
+      markFailed()
+
+      // If insufficient credits, redirect to the pricing/credits page.
+      // skipSplash → App skips the 1s loading splash for this redirect.
       if (err.response?.status === 403) {
-        setTimeout(() => navigate('/credits'), 1500)
+        setTimeout(() => navigate('/credits', { state: { skipSplash: true } }), 1500)
       }
     } finally {
       setLoadingChatId(null)
     }
   }
 
+  const onSubmit = (e) => {
+    e.preventDefault()
+    if (loadingChatId !== null) return
+    if (!user) return toast('Login to send message')
+    if (!selectedChat) return toast.error('No active session. Please start a new session.')
+    if (!prompt.trim()) return
+
+    if (mode === 'video') {
+      return toast('🎬 Video generation is an upcoming feature — coming soon!')
+    }
+
+    const text = prompt.trim()
+    setPrompt('')
+    sendPrompt({
+      chatId: selectedChat._id,
+      text,
+      sendMode: mode,
+      sendRagMode: ragMode,
+      sendIsPublished: isPublished,
+    })
+  }
+
+  // Retry a message that failed to send, using the mode it was sent with.
+  const resendMessage = (failedMsg) => {
+    if (loadingChatId !== null) return
+    if (!selectedChat) return
+
+    // Drop the failed bubble; sendPrompt re-adds a fresh optimistic one.
+    setMessages(prev => prev.filter(m => m.timestamp !== failedMsg.timestamp))
+
+    const r = failedMsg.retry || {}
+    sendPrompt({
+      chatId: selectedChat._id,
+      text: failedMsg.content,
+      sendMode: r.sendMode || 'text',
+      sendRagMode: r.sendRagMode || 'hybrid',
+      sendIsPublished: r.sendIsPublished || false,
+    })
+  }
+
+  // Load a chat's messages only when the chat ID actually changes (a real
+  // chat switch) — NOT when the same chat's object reference changes, e.g.
+  // when the background auto-title updates selectedChat. Otherwise the live
+  // conversation gets wiped and it looks like a new chat opened.
   useEffect(() => {
     if (selectedChat) {
       setMessages(selectedChat.messages || [])
     }
-  }, [selectedChat])
+  }, [selectedChat?._id])
+
+  // Remember where the user is scrolled within the current chat.
+  const handleScroll = () => {
+    const c = containerRef.current
+    if (c && selectedChat?._id) {
+      sessionStorage.setItem('promptoScroll:' + selectedChat._id, String(c.scrollTop))
+    }
+  }
 
   useEffect(() => {
-    containerRef.current?.scrollTo({
-      top: containerRef.current.scrollHeight,
-      behavior: 'smooth'
-    })
+    const c = containerRef.current
+    if (!c) return
+
+    // On a page reload while inside the chat, restore the exact scroll
+    // position the user was at (the question/answer they were viewing).
+    if (pendingReloadScroll && messages.length > 0) {
+      pendingReloadScroll = false
+      const saved = selectedChat?._id
+        ? sessionStorage.getItem('promptoScroll:' + selectedChat._id)
+        : null
+      if (saved !== null) {
+        const prev = c.style.scrollBehavior
+        c.style.scrollBehavior = 'auto'
+        c.scrollTop = Number(saved)
+        c.style.scrollBehavior = prev
+        return
+      }
+    }
+
+    c.scrollTo({ top: c.scrollHeight, behavior: 'smooth' })
   }, [messages])
 
   return (
@@ -134,34 +233,12 @@ const ChatBox = () => {
             {selectedChat?.name || 'New Session'}
           </h2>
         </div>
-
-        {selectedChat && (
-          <button
-            onClick={async () => {
-              if (window.confirm('Delete this session permanently?')) {
-                try {
-                  const { data } = await axios.post('/api/chat/delete', { chatId: selectedChat._id })
-                  if (data.success) {
-                    toast.success('Session deleted')
-                    setChats(prev => prev.filter(c => c._id !== selectedChat._id))
-                    // Selected chat will be cleared by AppContextProvider sync or manually here
-                  }
-                } catch (err) {
-                  toast.error('Failed to delete')
-                }
-              }
-            }}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-red-500 hover:bg-red-500/10 transition-all"
-          >
-            <img src={assets.bin_icon} className="w-3.5 opacity-60" alt="delete" />
-            Delete Session
-          </button>
-        )}
       </div>
 
       {/* Messages area */}
       <div
         ref={containerRef}
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-6 md:px-12 xl:px-32 py-10 space-y-8 scroll-smooth custom-scrollbar"
       >
         {messages.length === 0 && (
@@ -203,7 +280,23 @@ const ChatBox = () => {
         )}
 
         {(messages || []).map((m, i) => (
-          <Message key={i} message={m} />
+          <React.Fragment key={i}>
+            <Message message={m} />
+            {m.failed && (
+              <div className="flex justify-end items-center gap-2 -mt-5 pr-1 animate-fade-in">
+                <span className="text-[10px] font-black uppercase tracking-wider text-red-500/80">
+                  Not delivered
+                </span>
+                <button
+                  onClick={() => resendMessage(m)}
+                  disabled={loadingChatId !== null}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-red-500 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-40 transition-all"
+                >
+                  ↻ Resend
+                </button>
+              </div>
+            )}
+          </React.Fragment>
         ))}
 
         {loadingChatId === selectedChat?._id && (
@@ -287,7 +380,7 @@ const ChatBox = () => {
               e.target.style.height = 'auto'
               e.target.style.height = e.target.scrollHeight + 'px'
             }}
-            placeholder="Type your prompt here..."
+            placeholder="Type a prompt..."
             className="
               flex-1 bg-transparent px-4 py-3.5 text-sm outline-none 
               placeholder-muted font-medium resize-none max-h-48 custom-scrollbar

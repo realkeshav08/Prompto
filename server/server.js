@@ -3,6 +3,7 @@ import 'dotenv/config';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
+import rateLimit from 'express-rate-limit';
 
 import connectDB from './configs/db.js';
 import userRouter from './routes/userRoutes.js';
@@ -13,6 +14,10 @@ import documentRouter from './routes/documentRoutes.js';
 import { stripeWebhooks } from './controllers/webhooks.js';
 
 const app = express();
+
+// Trust the first proxy hop (Vercel/Render/etc.) so rate limiting keys on the
+// real client IP rather than the proxy's.
+app.set('trust proxy', 1);
 
 /* ---------------- DATABASE ---------------- */
 
@@ -37,7 +42,7 @@ app.post(
 const allowedOrigins = [
   process.env.CLIENT_URL,         // production frontend
   'http://localhost:5173',        // local dev
-];
+].filter(Boolean);                // drop undefined entries (e.g. CLIENT_URL unset)
 
 app.use(
   cors({
@@ -59,6 +64,40 @@ app.use(helmet({
 }));
 app.use(compression());
 app.use(express.json());
+
+/* ---------------- RATE LIMITING ---------------- */
+
+// Strict limiter for auth + password endpoints — blocks credential and
+// OTP brute-force attempts.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many attempts. Please try again later.' },
+});
+
+// General limiter for the rest of the API.
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests. Please slow down.' },
+});
+
+app.use(
+  [
+    '/api/user/login',
+    '/api/user/register',
+    '/api/user/forgot-password',
+    '/api/user/verify-otp',
+    '/api/user/reset-password',
+    '/api/user/change-password',
+  ],
+  authLimiter
+);
+app.use('/api', apiLimiter);
 
 /* ---------------- ROUTES ---------------- */
 
@@ -87,7 +126,7 @@ app.use((err, _req, res, _next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({
     success: false,
-    message: err.message || 'Internal server error',
+    message: 'Internal server error',
   });
 });
 

@@ -33,7 +33,7 @@ const MessageSchema = new Schema(
       default: false,
     },
 
-    createdAt: {
+    timestamp: {
       type: Date,
       default: Date.now,
     },

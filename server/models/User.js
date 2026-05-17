@@ -30,7 +30,7 @@ const UserSchema = new Schema(
 
     credits: {
       type: Number,
-      default: 20,
+      default: 100,
       min: 0,
     },
 

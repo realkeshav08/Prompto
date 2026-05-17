@@ -15,11 +15,12 @@ const Message = ({ message }) => {
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-fade-in mb-2`}>
       <div
         className={`
-          max-w-[80%] md:max-w-[70%] p-4 md:p-5 shadow-premium
+          max-w-[80%] md:max-w-[70%] p-5 md:p-6 shadow-premium
           ${isUser
             ? 'bg-gradient-to-br from-indigo-600 to-accent text-white rounded-[2rem] rounded-tr-md'
             : 'glass text-text rounded-[2rem] rounded-tl-md hover:scale-[1.01] transition-transform duration-300'
-          } 
+          }
+          ${message.failed ? 'ring-2 ring-red-500/60' : ''}
           break-words relative
         `}
       >
@@ -51,7 +52,7 @@ const Message = ({ message }) => {
             {message.content}
           </div>
         ) : (
-          <div className="text-[15px] leading-relaxed font-semibold tracking-tight prose prose-invert prose-sm max-w-none">
+          <div className="chat-md text-[15px]">
             <ReactMarkdown>{message.content}</ReactMarkdown>
           </div>
         )}

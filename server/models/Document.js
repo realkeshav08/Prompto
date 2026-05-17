@@ -17,7 +17,7 @@ const DocumentSchema = new Schema(
     },
     fileType: {
       type: String,
-      enum: ['pdf', 'txt', 'docx', 'url'],
+      enum: ['pdf', 'txt', 'docx', 'url', 'image'],
       required: true,
     },
     sourceUrl: {

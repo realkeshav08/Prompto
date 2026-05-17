@@ -122,7 +122,7 @@ export const purchasePlan = async (req, res) => {
         app: 'prompto',
       },
       expires_at:
-        Math.floor(Date.now() / 1000) + 30 * 60,
+        Math.floor(Date.now() / 1000) + 35 * 60,
     });
 
     return res.status(200).json({

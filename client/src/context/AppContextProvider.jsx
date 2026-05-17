@@ -97,7 +97,7 @@ export const AppContextProvider = ({ children }) => {
   const createNewChat = useCallback(async (silent = false) => {
     // 🛡️ Guard: If the current chat is already empty, don't create a new one
     if (selectedChat && (!selectedChat.messages || selectedChat.messages.length === 0)) {
-      console.log("⚠️ Already on an empty session, skipping creation");
+      logger.log("⚠️ Already on an empty session, skipping creation");
       navigate('/')
       return;
     }
@@ -157,6 +157,14 @@ export const AppContextProvider = ({ children }) => {
     localStorage.setItem('theme', theme)
   }, [theme])
 
+  /* ---------------- REMEMBER SELECTED CHAT ---------------- */
+  // Persist the open chat so a page reload restores the same session.
+  useEffect(() => {
+    if (selectedChat?._id) {
+      sessionStorage.setItem('promptoSelectedChat', selectedChat._id)
+    }
+  }, [selectedChat])
+
   /* ---------------- BOOTSTRAP ---------------- */
 
   useEffect(() => {
@@ -189,11 +197,14 @@ export const AppContextProvider = ({ children }) => {
             if (data.success) {
               setChats(data.chats || [])
               
-              // 🛡️ Ensure we always have a selected chat if on home page
+              // 🛡️ Ensure we always have a selected chat if on home page.
+              // Restore the chat the user had open before the reload.
               if (data.chats?.length === 0) {
                 createNewChat(true);
               } else if (!selectedChat) {
-                setSelectedChat(data.chats[0]);
+                const savedId = sessionStorage.getItem('promptoSelectedChat');
+                const restored = savedId && data.chats.find(c => c._id === savedId);
+                setSelectedChat(restored || data.chats[0]);
               }
             }
           } catch (err) { console.error(err) }
@@ -201,7 +212,12 @@ export const AppContextProvider = ({ children }) => {
         syncOnly();
       }
     }
-  }, [user, selectedChat]);
+    // Keyed on the user's ID so this runs ONCE per signed-in user — not on
+    // every chat switch (which refetched the chat list and raced with the
+    // empty-chat cleanup, re-adding deleted sessions) and not on every credit
+    // change (the `user` object reference changes when credits update).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?._id]);
 
   const prevSelectedId = useRef(null);
 
@@ -212,7 +228,7 @@ export const AppContextProvider = ({ children }) => {
       if (prevId && (!selectedChat || selectedChat._id !== prevId)) {
         const chatToDelete = chats.find(c => c._id === prevId);
         if (chatToDelete && (!chatToDelete.messages || chatToDelete.messages.length === 0)) {
-          console.log("🧹 Auto-cleaning empty chat:", prevId);
+          logger.log("🧹 Auto-cleaning empty chat:", prevId);
           try {
             await api.post('/api/chat/delete', { chatId: prevId });
             setChats(prev => prev.filter(c => c._id !== prevId));
@@ -230,6 +246,21 @@ export const AppContextProvider = ({ children }) => {
   useEffect(() => {
     if (selectedChat && !chats.some(c => c._id === selectedChat._id)) {
       setSelectedChat(null);
+    }
+  }, [chats, selectedChat]);
+
+  /* ---------------- KEEP SELECTED CHAT FRESH ---------------- */
+  // The chats list is the source of truth for a chat's messages. A chat
+  // object created via createNewChat starts with messages: [] and is never
+  // re-synced — so selectedChat would hold a stale empty snapshot. If any
+  // effect then reloads the view from selectedChat, the open conversation
+  // gets wiped and it looks like a brand-new session opened. Mirroring the
+  // live chats entry into selectedChat keeps it always current.
+  useEffect(() => {
+    if (!selectedChat?._id) return;
+    const fresh = chats.find(c => c._id === selectedChat._id);
+    if (fresh && fresh !== selectedChat) {
+      setSelectedChat(fresh);
     }
   }, [chats, selectedChat]);
 

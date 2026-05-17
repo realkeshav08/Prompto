@@ -20,7 +20,14 @@ export const registerUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    if (!name || !email || !password) {
+    // Require plain strings — rejects object/array payloads that could
+    // otherwise smuggle MongoDB query operators into the lookup.
+    if (
+      typeof name !== 'string' ||
+      typeof email !== 'string' ||
+      typeof password !== 'string' ||
+      !name || !email || !password
+    ) {
       return res.status(400).json({
         success: false,
         message: 'All fields are required',
@@ -64,7 +71,8 @@ export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
+    // Require plain strings — blocks MongoDB operator injection via objects.
+    if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
       return res.status(400).json({
         success: false,
         message: 'Email and password are required',
@@ -105,15 +113,84 @@ export const loginUser = async (req, res) => {
 
 export const getUser = async (req, res) => {
   try {
+    const isAdmin = !!process.env.ADMIN_EMAIL && req.user.email === process.env.ADMIN_EMAIL;
     return res.status(200).json({
       success: true,
-      user: req.user,
+      user: { ...req.user.toObject(), isAdmin },
     });
   } catch (err) {
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch user',
     });
+  }
+};
+
+/* ---------------- UPDATE PROFILE ---------------- */
+
+export const updateProfile = async (req, res) => {
+  try {
+    const name = req.body.name?.trim();
+
+    if (!name || name.length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name must be at least 2 characters',
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { name },
+      { new: true }
+    );
+
+    const isAdmin = !!process.env.ADMIN_EMAIL && user.email === process.env.ADMIN_EMAIL;
+    return res.status(200).json({ success: true, user: { ...user.toObject(), isAdmin } });
+  } catch (err) {
+    console.error('Update profile error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to update profile' });
+  }
+};
+
+/* ---------------- CHANGE PASSWORD ---------------- */
+
+export const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current and new password are both required',
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters',
+      });
+    }
+
+    const user = await User.findById(req.user._id).select('+password');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: 'Current password is incorrect' });
+    }
+
+    // The User pre-save hook re-hashes the password.
+    user.password = newPassword;
+    await user.save();
+
+    return res.status(200).json({ success: true, message: 'Password updated successfully' });
+  } catch (err) {
+    console.error('Change password error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to change password' });
   }
 };
 
@@ -166,15 +243,23 @@ import { sendRecoveryEmail } from '../utils/email.js';
 
 export const forgotPassword = async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = req.body.email?.trim();
     if (!email) return res.status(400).json({ success: false, message: "Email is required" });
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    // Always respond identically whether or not the account exists,
+    // so this endpoint can't be used to discover registered emails.
+    const genericResponse = {
+      success: true,
+      message: "If an account exists for that email, a recovery code has been sent",
+    };
+
+    if (!user) return res.status(200).json(genericResponse);
 
     // Generate 6 digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    
+
     // Set expiry to 10 minutes
     user.resetPasswordToken = otp;
     user.resetPasswordExpire = Date.now() + 10 * 60 * 1000;
@@ -190,13 +275,11 @@ export const forgotPassword = async (req, res) => {
       });
     }
 
-    return res.status(200).json({
-      success: true,
-      message: "Recovery code sent to your email",
-    });
+    return res.status(200).json(genericResponse);
 
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    console.error('User controller error:', err.message);
+    return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 };
 
@@ -204,7 +287,8 @@ export const forgotPassword = async (req, res) => {
 
 export const verifyOTP = async (req, res) => {
   try {
-    const { email, otp } = req.body;
+    const email = req.body.email?.trim();
+    const otp = req.body.otp?.trim();
     if (!email || !otp) return res.status(400).json({ success: false, message: "All fields required" });
 
     const user = await User.findOne({ 
@@ -223,7 +307,8 @@ export const verifyOTP = async (req, res) => {
     });
 
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    console.error('User controller error:', err.message);
+    return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 };
 
@@ -231,7 +316,9 @@ export const verifyOTP = async (req, res) => {
 
 export const resetPassword = async (req, res) => {
   try {
-    const { email, otp, newPassword } = req.body;
+    const email = req.body.email?.trim();
+    const otp = req.body.otp?.trim();
+    const { newPassword } = req.body;
     if (!email || !otp || !newPassword) return res.status(400).json({ success: false, message: "All fields required" });
 
     if (newPassword.length < 6) {
@@ -260,6 +347,7 @@ export const resetPassword = async (req, res) => {
     });
 
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    console.error('User controller error:', err.message);
+    return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 };

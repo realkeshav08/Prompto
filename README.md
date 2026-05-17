@@ -1,17 +1,22 @@
 # Prompto | The Advanced AI Workspace
 
-Prompto is a full-stack AI platform for text generation, image creation, and RAG-powered Study AI. Built with a modern glassmorphic aesthetic and a credit-based billing system.
+Prompto is a full-stack AI platform for text generation, image creation, and
+RAG-powered Study AI. Built with a modern glassmorphic aesthetic and a
+credit-based billing system.
 
 ---
 
 ## Features
 
-- **Multi-Modal AI** — Text chat, image generation, video, and Study AI (RAG) modes
-- **Study AI** — Upload PDFs, DOCX, TXT files or paste URLs; ask questions grounded in your own materials using Retrieval-Augmented Generation
-- **Conversation Memory** — Multi-turn chat history passed to the AI for context-aware responses
-- **Credit System** — Stripe-integrated billing with per-feature credit costs and automatic refunds on failure
-- **Community Gallery** — Publish and browse AI-generated images
-- **Secure Auth** — JWT authentication with bcrypt password hashing and OTP-based password recovery
+- **Multi-Modal AI** — Text chat, image generation, and Study AI (RAG) modes. (Video generation is an upcoming feature.)
+- **Study AI (RAG)** — Upload PDFs, DOCX, TXT files, **images**, or paste URLs; ask questions grounded in your own materials. Scanned/image-only PDFs and photos are read with **OCR**.
+- **AI-generated chat titles** — Each conversation is auto-named from its first exchange; titles are also editable.
+- **Conversation memory** — A bounded, recent-context window of the chat history is passed to the model for coherent multi-turn replies.
+- **Resilient image generation** — A cascade of free providers (Pollinations → Gemini → ImageKit) so a quota limit on one doesn't break image creation.
+- **Credit system** — Stripe-integrated billing with per-feature credit costs and automatic refunds on failure.
+- **Community Gallery** — Publish and browse AI-generated images.
+- **In-app Settings** — Profile, password change, plan/credits, theme, and Terms / Privacy.
+- **Secure auth** — JWT authentication, bcrypt password hashing, and OTP-based password recovery.
 
 ---
 
@@ -25,10 +30,11 @@ Prompto is a full-stack AI platform for text generation, image creation, and RAG
 - Express 5, MongoDB + Mongoose
 - LangChain (`@langchain/mongodb`, `@langchain/google-genai`) for document ingestion
 - ImageKit SDK, Stripe API, Nodemailer
+- `helmet`, `compression`, `express-rate-limit`
 
 ### AI Microservice (Python)
 - FastAPI + Uvicorn
-- Google Gemini API (`google-genai`) with 7-model cascading fallback
+- Google Gemini API (`google-genai`) with a multi-model cascading fallback
 - LangChain + MongoDB Atlas Vector Search for RAG
 - Embedding model: `gemini-embedding-001` (3072 dimensions)
 
@@ -44,7 +50,8 @@ Client (React) → Node.js API → Python FastAPI
             MongoDB Atlas Vector Search
 ```
 
-The Node.js server handles auth, credits, and data persistence. All AI inference is delegated to the Python microservice.
+The Node.js server handles auth, credits, and data persistence. All AI
+inference is delegated to the Python microservice.
 
 ---
 
@@ -90,6 +97,10 @@ npm run dev
 
 Open **http://localhost:5173**
 
+> **Note:** `INTERNAL_API_KEY` must be set to the **same value** in both
+> `server/.env` and `python-service/.env` — it lets the AI service reject any
+> caller other than the Node API.
+
 ---
 
 ## MongoDB Atlas Vector Search Index
@@ -118,17 +129,34 @@ Create a Vector Search index named `vector_index` on the `document_chunks` colle
 | Feature | Credits |
 |---------|---------|
 | Text chat | 1 |
-| Study AI (RAG) | 1 |
+| Study AI (RAG) | 2 |
 | Image generation | 2 |
-| Video generation | 4 |
+| Video generation | 4 *(upcoming)* |
+
+New accounts start with 100 credits.
+
+---
+
+## Security
+
+- JWT auth with bcrypt-hashed passwords; OTP password recovery.
+- Rate limiting on auth/password endpoints (brute-force protection).
+- The Python AI service requires an internal shared key (`INTERNAL_API_KEY`).
+- URL document ingestion is SSRF-guarded (private/internal addresses blocked).
+- Shared "global" Study AI documents can only be uploaded by `ADMIN_EMAIL`.
+- AI system prompts are hardened against prompt injection and document poisoning.
 
 ---
 
 ## Production Deployment
 
-- **Frontend + Node.js backend** → Vercel
-- **Python microservice** → Railway, Render, or any VPS
-- Set `PYTHON_AI_URL` in the server environment to point to your deployed Python service
+- **Frontend** → Vercel — set `VITE_SERVER_URL` to the backend URL.
+- **Node.js backend** → Render — set `CLIENT_URL` (frontend URL) and
+  `PYTHON_AI_URL` (Python service URL).
+- **Python microservice** → Render / Railway / any VPS — start command
+  `uvicorn main:app --host 0.0.0.0 --port $PORT`.
+- Set the **same** `INTERNAL_API_KEY` on the backend and the Python service.
+- Register the production Stripe webhook at `/api/webhook/stripe`.
 
 ---
 
