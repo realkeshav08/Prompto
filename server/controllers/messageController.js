@@ -208,7 +208,9 @@ export const textMessageController = async (req, res) => {
       const { data: aiData } = await axios.post(
         `${PYTHON_AI_URL}/chat`,
         { prompt, history },
-        { timeout: 30000, headers: PY_HEADERS }
+        // Generous timeout so a cold-started AI service (free-tier hosts can
+        // take ~50s to wake) still completes the first request instead of failing.
+        { timeout: 90000, headers: PY_HEADERS }
       );
       aiContent = aiData.response;
     } catch (aiErr) {
@@ -301,7 +303,8 @@ export const ragMessageController = async (req, res) => {
       const { data: aiData } = await axios.post(
         `${PYTHON_AI_URL}/rag`,
         { prompt, rag_mode: ragMode, user_id: userId.toString(), history: ragHistory },
-        { timeout: 60000, headers: PY_HEADERS }
+        // Generous timeout — covers a cold-started AI service plus RAG retrieval.
+        { timeout: 90000, headers: PY_HEADERS }
       );
       aiContent = aiData.response;
     } catch (ragErr) {
