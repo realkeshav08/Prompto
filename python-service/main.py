@@ -109,8 +109,9 @@ class TitleResponse(BaseModel):
 
 # ─── Health ───────────────────────────────────────────────────────────────────
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def health():
+    # GET + HEAD so uptime monitors (which often use HEAD) don't get a 405.
     return {"status": "Prompto AI Service is running"}
 
 # ─── /chat — text generation with cascading model fallback ───────────────────
