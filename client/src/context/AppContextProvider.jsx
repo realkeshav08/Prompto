@@ -8,7 +8,10 @@ import { AppContext } from './context'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_SERVER_URL,
-  withCredentials: true
+  withCredentials: true,
+  // Global cap so no request can hang the UI forever if the backend is
+  // cold-starting or unreachable. Long AI/upload calls override this.
+  timeout: 120000,
 })
 
 // Production-safe logging
@@ -74,7 +77,10 @@ export const AppContextProvider = ({ children }) => {
   const fetchUser = useCallback(async () => {
     try {
       setLoadingUser(true)
-      const { data } = await api.get('/api/user/data')
+      // Timeout so a cold-starting backend can't hang the app forever on the
+      // "Synchronizing session" screen. 75s comfortably covers a cold start
+      // (~50s); a genuine hang fails here and the app falls through instead.
+      const { data } = await api.get('/api/user/data', { timeout: 75000 })
 
       if (data.success) {
         setUser(data.user)

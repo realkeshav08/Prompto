@@ -90,7 +90,8 @@ const ChatBox = () => {
         ? { chatId, prompt: text, ragMode: sendRagMode }
         : { chatId, prompt: text, isPublished: sendIsPublished }
 
-      const { data } = await axios.post(endpoint, payload)
+      // Generous timeout — image generation and a cold AI service can run long.
+      const { data } = await axios.post(endpoint, payload, { timeout: 180000 })
 
       if (data.success) {
         setMessages(prev => [...prev, data.reply])

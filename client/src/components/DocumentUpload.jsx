@@ -38,6 +38,7 @@ const DocumentUpload = ({ isOpen, onClose }) => {
       form.append('isGlobal', String(isGlobal))
       const { data } = await axios.post('/api/document/upload', form, {
         headers: { Authorization: token, 'Content-Type': 'multipart/form-data' },
+        timeout: 180000, // OCR + embedding of a large document can run long
       })
       if (data.success) {
         toast.success(data.message)
@@ -60,7 +61,7 @@ const DocumentUpload = ({ isOpen, onClose }) => {
       const { data } = await axios.post(
         '/api/document/upload',
         { url: url.trim(), isGlobal },
-        { headers: { Authorization: token } }
+        { headers: { Authorization: token }, timeout: 180000 }
       )
       if (data.success) {
         toast.success(data.message)
