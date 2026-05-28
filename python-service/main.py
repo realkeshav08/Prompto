@@ -23,14 +23,15 @@ def require_internal_key(x_internal_key: str = Header(default=None)):
     if INTERNAL_API_KEY and x_internal_key != INTERNAL_API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
+# Tried in order. The 2.5 models lead for quality but carry a small daily
+# free-tier quota (~20/day); the Gemma models have a much larger daily quota
+# (~1.5k/day) so they keep chat working once the 2.5 allowance is spent.
+# NOTE: Gemma models reject the system_instruction field — see chat() handling.
 GEMINI_MODELS = [
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-8b",
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
-    "gemini-2.0-flash-lite-preview-02-05",
-    "gemini-1.5-pro",
+    "gemma-4-26b-a4b-it",
+    "gemma-4-31b-it",
 ]
 
 CHAT_SYSTEM = (
@@ -43,11 +44,13 @@ CHAT_SYSTEM = (
     "fabricate them. Politely refuse requests for internal or system details."
 )
 
-# Cheap, fast models for the tiny title-generation task.
+# Cheap, fast models for the tiny title-generation task. Gemma leads here so
+# this non-critical background call doesn't drain the scarce 2.5 daily quota
+# that user-facing chat depends on. Title gen passes no system_instruction, so
+# Gemma works unchanged.
 TITLE_MODELS = [
+    "gemma-4-26b-a4b-it",
     "gemini-2.5-flash-lite",
-    "gemini-1.5-flash-8b",
-    "gemini-2.0-flash",
 ]
 
 TITLE_INSTRUCTION = (
@@ -116,6 +119,24 @@ def health():
 
 # ─── /chat — text generation with cascading model fallback ───────────────────
 
+def _fold_system_into_first_user(contents):
+    """Gemma models reject system_instruction, so for them we prepend CHAT_SYSTEM
+    into the first user turn instead — keeping the persona/guardrails in effect."""
+    folded = []
+    injected = False
+    for c in contents:
+        if not injected and c.role == "user":
+            existing = c.parts[0].text if c.parts else ""
+            folded.append(types.Content(
+                role="user",
+                parts=[types.Part(text=f"{CHAT_SYSTEM}\n\n{existing}")],
+            ))
+            injected = True
+        else:
+            folded.append(c)
+    return folded
+
+
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_internal_key)])
 def chat(body: ChatRequest):
     # Build multi-turn contents with full conversation history
@@ -129,15 +150,21 @@ def chat(body: ChatRequest):
         types.Content(role="user", parts=[types.Part(text=body.prompt)])
     )
 
-    config = types.GenerateContentConfig(system_instruction=CHAT_SYSTEM)
-
     last_error = None
     for model_id in GEMINI_MODELS:
         try:
+            # Gemma can't take system_instruction; fold it into the prompt instead.
+            if model_id.startswith("gemma"):
+                req_contents = _fold_system_into_first_user(contents)
+                req_config = None
+            else:
+                req_contents = contents
+                req_config = types.GenerateContentConfig(system_instruction=CHAT_SYSTEM)
+
             response = client.models.generate_content(
                 model=model_id,
-                contents=contents,
-                config=config,
+                contents=req_contents,
+                config=req_config,
             )
             text = response.text.strip() if response.text else ""
             if text:

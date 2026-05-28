@@ -5,24 +5,15 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_mongodb import MongoDBAtlasVectorSearch
 from pymongo import MongoClient
 
-GEMINI_MODELS = [
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-8b",
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-2.0-flash-lite-preview-02-05",
-    "gemini-1.5-pro",
-]
-
-# Generation models for RAG answers — strongest first for accuracy,
-# with fallbacks so a quota limit doesn't break Study AI.
+# Generation models for RAG answers — strongest first for accuracy, then the
+# high-daily-quota Gemma models so an exhausted 2.5 allowance doesn't break
+# Study AI. RAG passes its system prompt as plain prompt text (no
+# system_instruction), so Gemma models work here without special handling.
 RAG_MODELS = [
     "gemini-2.5-flash",
-    "gemini-2.0-flash",
     "gemini-2.5-flash-lite",
-    "gemini-1.5-flash",
-    "gemini-1.5-pro",
+    "gemma-4-26b-a4b-it",
+    "gemma-4-31b-it",
 ]
 
 STUDY_AI_SYSTEM = """You are **Prompto Study AI**, an advanced AI-powered learning assistant designed to help students understand concepts using their own study materials and trusted academic sources.

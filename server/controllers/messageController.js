@@ -1,10 +1,18 @@
 import axios from "axios";
+import { z } from "zod";
 import Chat from "../models/Chat.js";
 import User from "../models/User.js";
 import imagekit from "../configs/imageKit.js";
 import ai from "../configs/ai.js";
 
 const PYTHON_AI_URL = process.env.PYTHON_AI_URL || "http://localhost:8000";
+
+// Validates the shared shape of message requests: a chat id plus a non-empty
+// prompt capped at 5000 chars to reject oversized/abusive payloads.
+const messageSchema = z.object({
+  chatId: z.string().min(1),
+  prompt: z.string().trim().min(1).max(5000),
+});
 
 // Shared secret sent to the Python AI service so it can reject any caller
 // other than this Node API. Sent only when configured (no-op in local dev).
@@ -142,18 +150,19 @@ const generateImageBuffer = async (prompt) => {
 export const textMessageController = async (req, res) => {
   try {
     const userId = req.user?._id;
-    const { chatId, prompt } = req.body;
 
     if (!userId) {
       throw new Error("User not authenticated");
     }
 
-    if (!chatId || !prompt?.trim()) {
+    const parsed = messageSchema.safeParse(req.body);
+    if (!parsed.success) {
       return res.status(400).json({
         success: false,
-        message: "Chat ID and prompt are required",
+        message: "Chat ID and a prompt (1–5000 chars) are required",
       });
     }
+    const { chatId, prompt } = parsed.data;
 
     /* ---------- CREDIT CHECK ---------- */
 
@@ -269,11 +278,13 @@ export const textMessageController = async (req, res) => {
 export const ragMessageController = async (req, res) => {
   try {
     const userId = req.user?._id;
-    const { chatId, prompt, ragMode = 'hybrid' } = req.body;
+    const { ragMode = 'hybrid' } = req.body;
 
-    if (!chatId || !prompt?.trim()) {
-      return res.status(400).json({ success: false, message: 'Chat ID and prompt are required' });
+    const parsed = messageSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, message: 'Chat ID and a prompt (1–5000 chars) are required' });
     }
+    const { chatId, prompt } = parsed.data;
 
     const user = await User.findOneAndUpdate(
       { _id: userId, credits: { $gte: 2 } },
@@ -337,14 +348,16 @@ export const ragMessageController = async (req, res) => {
 export const imageMessageController = async (req, res) => {
   try {
     const userId = req.user?._id;
-    const { chatId, prompt, isPublished } = req.body;
+    const { isPublished } = req.body;
 
-    if (!chatId || !prompt?.trim()) {
+    const parsed = messageSchema.safeParse(req.body);
+    if (!parsed.success) {
       return res.status(400).json({
         success: false,
-        message: "Chat ID and prompt required",
+        message: "Chat ID and a prompt (1–5000 chars) required",
       });
     }
+    const { chatId, prompt } = parsed.data;
 
     const user = await User.findOneAndUpdate(
       { _id: userId, credits: { $gte: 2 } },

@@ -63,7 +63,8 @@ app.use(helmet({
   crossOriginResourcePolicy: false, // Required for ImageKit images to load correctly in some browsers
 }));
 app.use(compression());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 /* ---------------- RATE LIMITING ---------------- */
 
@@ -86,6 +87,16 @@ const apiLimiter = rateLimit({
   message: { success: false, message: 'Too many requests. Please slow down.' },
 });
 
+// Stricter limiter for AI generation endpoints — caps Gemini/image cost and
+// abuse. These are the expensive, credit-spending routes.
+const aiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many AI requests. Please try again later.' },
+});
+
 app.use(
   [
     '/api/user/login',
@@ -97,6 +108,7 @@ app.use(
   ],
   authLimiter
 );
+app.use('/api/message', aiLimiter);
 app.use('/api', apiLimiter);
 
 /* ---------------- ROUTES ---------------- */

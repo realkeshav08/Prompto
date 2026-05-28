@@ -30,7 +30,7 @@ credit-based billing system.
 - Express 5, MongoDB + Mongoose
 - LangChain (`@langchain/mongodb`, `@langchain/google-genai`) for document ingestion
 - ImageKit SDK, Stripe API, Nodemailer
-- `helmet`, `compression`, `express-rate-limit`
+- `helmet`, `compression`, `express-rate-limit`, `zod` (input validation)
 
 ### AI Microservice (Python)
 - FastAPI + Uvicorn
@@ -58,7 +58,7 @@ inference is delegated to the Python microservice.
 ## Getting Started
 
 ### Prerequisites
-- Node.js v18+
+- Node.js v20+
 - Python 3.10+
 - MongoDB Atlas cluster with a Vector Search index on `document_chunks`
 - Gemini API key
@@ -140,8 +140,11 @@ New accounts start with 100 credits.
 ## Security
 
 - JWT auth with bcrypt-hashed passwords; OTP password recovery.
-- Rate limiting on auth/password endpoints (brute-force protection).
-- The Python AI service requires an internal shared key (`INTERNAL_API_KEY`).
+- Rate limiting on auth/password endpoints (brute-force protection) and stricter
+  limits on AI generation endpoints (`/api/message`) to cap cost/abuse.
+- Request body size limits and Zod schema validation on message inputs.
+- The Python AI service requires an internal shared key (`INTERNAL_API_KEY`) and
+  binds to localhost only — it is never publicly exposed.
 - URL document ingestion is SSRF-guarded (private/internal addresses blocked).
 - Shared "global" Study AI documents can only be uploaded by `ADMIN_EMAIL`.
 - AI system prompts are hardened against prompt injection and document poisoning.
@@ -150,13 +153,19 @@ New accounts start with 100 credits.
 
 ## Production Deployment
 
+The production stack runs the Node backend and Python service together on a
+single VPS, both managed by PM2 (auto-restart on crash/reboot via `pm2 save` +
+a systemd startup hook):
+
 - **Frontend** → Vercel — set `VITE_SERVER_URL` to the backend URL.
-- **Node.js backend** → Render — set `CLIENT_URL` (frontend URL) and
-  `PYTHON_AI_URL` (Python service URL).
-- **Python microservice** → Render / Railway / any VPS — start command
-  `uvicorn main:app --host 0.0.0.0 --port $PORT`.
+- **Node.js backend** → VPS, on an internal port (e.g. `3001`) behind an Nginx
+  reverse proxy with HTTPS (Let's Encrypt), fronted by Cloudflare. Set
+  `CLIENT_URL` (frontend URL) and `PYTHON_AI_URL` (`http://127.0.0.1:8000`).
+- **Python microservice** → same VPS, bound to **`127.0.0.1:8000` only** (never
+  publicly exposed). Start command `uvicorn main:app --host 127.0.0.1 --port 8000`.
 - Set the **same** `INTERNAL_API_KEY` on the backend and the Python service.
 - Register the production Stripe webhook at `/api/webhook/stripe`.
+- Lock MongoDB Atlas **Network Access** to the VPS IP only.
 
 ---
 
