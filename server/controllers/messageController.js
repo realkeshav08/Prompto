@@ -20,6 +20,20 @@ const PY_HEADERS = process.env.INTERNAL_API_KEY
   ? { 'X-Internal-Key': process.env.INTERNAL_API_KEY }
   : {};
 
+// Best-effort credit refund used by controller catch blocks. Every text/study/
+// image handler debits credits up front (an atomic guard against double-spend),
+// so any failure AFTER that debit — a missing chat, a DB write error — must put
+// the credits back. Never throws: a failed refund must not mask the original
+// error, and passing a null userId is a harmless no-op.
+const refundCredits = async (userId, amount) => {
+  if (!userId) return;
+  try {
+    await User.findByIdAndUpdate(userId, { $inc: { credits: amount } });
+  } catch (refundErr) {
+    console.error('Credit refund failed:', refundErr.message);
+  }
+};
+
 /* Build the conversation context window sent to the AI.
 
    Like ChatGPT / Gemini, we don't resend the entire unbounded transcript —
@@ -204,6 +218,12 @@ export const textMessageController = async (req, res) => {
       isImage: false,
     });
 
+    // EARLY SAVE: persist the user message before calling the AI so that a
+    // tab close / AI failure / network drop can never delete what the user
+    // already typed. (ChatGPT-style: user message is always durable; only the
+    // assistant reply has a "Stopped" state.)
+    await chat.save();
+
     /* ===================================================== */
     /* ================= AI CALL (Python service) ========= */
     /* ===================================================== */
@@ -212,7 +232,8 @@ export const textMessageController = async (req, res) => {
     // (exclude the user message we just pushed).
     const history = buildHistory(chat.messages.slice(0, -1));
 
-    let aiContent;
+    let aiContent = '';
+    let stopped = false;
     try {
       const { data: aiData } = await axios.post(
         `${PYTHON_AI_URL}/chat`,
@@ -221,49 +242,50 @@ export const textMessageController = async (req, res) => {
         // take ~50s to wake) still completes the first request instead of failing.
         { timeout: 90000, headers: PY_HEADERS }
       );
-      aiContent = aiData.response;
+      aiContent = aiData.response || '';
+      if (!aiContent.trim()) stopped = true;
     } catch (aiErr) {
       console.error("🔥 Python AI service error:", aiErr.message);
-      await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } });
-      return res.status(500).json({
-        success: false,
-        message: aiErr.response?.data?.detail || "AI service is temporarily unavailable",
-      });
+      stopped = true;
     }
 
-    if (!aiContent?.trim()) {
-      await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } });
-      return res.status(500).json({ success: false, message: "AI returned an empty response" });
-    }
-
-    /* ---------- SAVE AI REPLY ---------- */
+    /* ---------- SAVE AI REPLY (or a stopped placeholder) ---------- */
 
     const reply = {
       role: "assistant",
-      content: aiContent,
+      content: stopped ? '' : aiContent,
       timestamp: Date.now(),
       isImage: false,
+      stopped,
+      mode: 'text',
     };
 
     chat.messages.push(reply);
     await chat.save();
 
+    if (stopped) {
+      // Credit was deducted up front; refund since the user didn't receive a reply.
+      await User.findByIdAndUpdate(userId, { $inc: { credits: 1 } });
+    }
+
     res.status(200).json({
       success: true,
       reply,
+      stopped,
     });
 
-    // Background: generate a concise title for the first exchange.
-    if (isFirstMessage) {
+    // Background: generate a concise title for the first exchange — only on
+    // a real reply (no point titling a stopped placeholder).
+    if (isFirstMessage && !stopped) {
       generateChatTitle(chat._id, prompt, aiContent, '', chat.name);
     }
     return;
 
   } catch (err) {
-    console.error("\n🔥 CONTROLLER FAILURE:");
-    console.error(err);
-    console.error(err.stack);
-
+    console.error("Text controller failure:", err.message);
+    // The 1-credit debit happened before any throw here (e.g. chat not found),
+    // so give it back rather than charging for an undelivered reply.
+    await refundCredits(req.user?._id, 1);
     return res.status(500).json({
       success: false,
       message: "Something went wrong. Please try again.",
@@ -306,10 +328,13 @@ export const ragMessageController = async (req, res) => {
     }
 
     chat.messages.push({ role: 'user', content: prompt, timestamp: Date.now(), isImage: false });
+    // EARLY SAVE — see textMessageController for the rationale.
+    await chat.save();
 
     const ragHistory = buildHistory(chat.messages.slice(0, -1));
 
-    let aiContent;
+    let aiContent = '';
+    let stopped = false;
     try {
       const { data: aiData } = await axios.post(
         `${PYTHON_AI_URL}/rag`,
@@ -317,26 +342,39 @@ export const ragMessageController = async (req, res) => {
         // Generous timeout — covers a cold-started AI service plus RAG retrieval.
         { timeout: 90000, headers: PY_HEADERS }
       );
-      aiContent = aiData.response;
+      aiContent = aiData.response || '';
+      if (!aiContent.trim()) stopped = true;
     } catch (ragErr) {
       console.error('RAG service error:', ragErr.message);
-      await User.findByIdAndUpdate(userId, { $inc: { credits: 2 } });
-      return res.status(500).json({ success: false, message: 'Study AI is temporarily unavailable' });
+      stopped = true;
     }
 
-    const reply = { role: 'assistant', content: aiContent, timestamp: Date.now(), isImage: false };
+    const reply = {
+      role: 'assistant',
+      content: stopped ? '' : aiContent,
+      timestamp: Date.now(),
+      isImage: false,
+      stopped,
+      mode: 'study',
+    };
     chat.messages.push(reply);
     await chat.save();
 
-    res.status(200).json({ success: true, reply });
+    if (stopped) {
+      await User.findByIdAndUpdate(userId, { $inc: { credits: 2 } });
+    }
 
-    // Background: generate a concise title for the first exchange.
-    if (isFirstMessage) {
+    res.status(200).json({ success: true, reply, stopped });
+
+    // Background: generate a concise title for the first exchange (only on success).
+    if (isFirstMessage && !stopped) {
       generateChatTitle(chat._id, prompt, aiContent, '📚 ', chat.name);
     }
     return;
   } catch (err) {
-    console.error('RAG controller error:', err);
+    console.error('RAG controller error:', err.message);
+    // Study AI debits 2 credits up front; refund on any post-debit failure.
+    await refundCredits(req.user?._id, 2);
     return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 };
@@ -388,56 +426,222 @@ export const imageMessageController = async (req, res) => {
       timestamp: Date.now(),
       isImage: false,
     });
+    // EARLY SAVE — see textMessageController for the rationale.
+    await chat.save();
 
     const cleanPrompt = prompt.replace(/^(draw|generate|create|make)\s+(an\s+)?(image\s+)?(of\s+)?/i, '').trim();
 
     // Try multiple free image providers in turn so a quota limit or outage
-    // on one doesn't break Draw.
-    let imageBuffer;
+    // on one doesn't break Draw. On total failure we persist a stopped
+    // placeholder rather than discarding the user prompt.
+    let url = '';
+    let stopped = false;
     try {
-      imageBuffer = await generateImageBuffer(cleanPrompt || prompt);
-    } catch (genErr) {
-      console.error('All image providers failed:', genErr.message);
-      await User.findByIdAndUpdate(userId, { $inc: { credits: 2 } });
-      return res.status(500).json({
-        success: false,
-        message: "Image generation is busy across all providers. Please try again in a moment.",
+      const imageBuffer = await generateImageBuffer(cleanPrompt || prompt);
+      // Host the generated image permanently on ImageKit.
+      const upload = await imagekit.upload({
+        file: imageBuffer.toString('base64'),
+        fileName: `gen-${Date.now()}.png`,
+        folder: "quickgpt",
       });
+      url = upload.url;
+    } catch (genErr) {
+      console.error('Image generation failed:', genErr.message);
+      stopped = true;
     }
-
-    // Host the generated image permanently on ImageKit.
-    const upload = await imagekit.upload({
-      file: imageBuffer.toString('base64'),
-      fileName: `gen-${Date.now()}.png`,
-      folder: "quickgpt",
-    });
 
     const reply = {
       role: "assistant",
-      content: upload.url,
+      content: stopped ? '' : url,
       timestamp: Date.now(),
-      isImage: true,
-      isPublished: Boolean(isPublished),
+      isImage: !stopped,
+      isPublished: !stopped && Boolean(isPublished),
+      stopped,
+      mode: 'image',
     };
 
     chat.messages.push(reply);
     await chat.save();
 
+    if (stopped) {
+      await User.findByIdAndUpdate(userId, { $inc: { credits: 2 } });
+    }
+
     return res.status(200).json({
       success: true,
       reply,
+      stopped,
     });
 
   } catch (err) {
-    // Credits were already deducted before this point — refund them.
-    try {
-      await User.findByIdAndUpdate(req.user?._id, { $inc: { credits: 2 } });
-    } catch (_) {}
-
+    // An exception here means we failed BEFORE the early-save (chat lookup
+    // raced/missing, etc.) — refund the upfront 2 credits and bail.
+    console.error('Image controller failure:', err.message);
+    await refundCredits(req.user?._id, 2);
     return res.status(500).json({
       success: false,
       message: "Internal server error during image generation",
     });
+  }
+};
+
+/* ===================================================== */
+/* ================= REGENERATE ======================== */
+/* =====================================================
+   Retries the AI reply for a chat whose last assistant message is `stopped`.
+   The mode (text / study / image) is read off that stopped placeholder, so
+   the client doesn't have to remember what was attempted (works even after a
+   page reload). Atomic credit deduct → remove the placeholder → run the right
+   pipeline → save the new reply (success or another stopped placeholder). */
+
+export const regenerateMessageController = async (req, res) => {
+  // Tracks credits already debited so the catch can refund if a later step
+  // (e.g. a DB save) throws after the deduction.
+  let debitedAmount = 0;
+  try {
+    const userId = req.user?._id;
+    if (!userId) throw new Error("User not authenticated");
+
+    const { chatId, ragMode = 'hybrid', isPublished = false } = req.body || {};
+    if (!chatId || typeof chatId !== 'string') {
+      return res.status(400).json({ success: false, message: "Chat ID is required" });
+    }
+
+    const chat = await Chat.findOne({ _id: chatId, userId });
+    if (!chat) return res.status(404).json({ success: false, message: "Chat not found" });
+
+    if (chat.messages.length < 2) {
+      return res.status(400).json({ success: false, message: "Nothing to regenerate" });
+    }
+
+    const lastMsg = chat.messages[chat.messages.length - 1];
+    if (lastMsg.role !== 'assistant' || !lastMsg.stopped) {
+      return res.status(400).json({ success: false, message: "Only a stopped reply can be regenerated" });
+    }
+
+    const prevUserMsg = chat.messages[chat.messages.length - 2];
+    if (!prevUserMsg || prevUserMsg.role !== 'user') {
+      return res.status(400).json({ success: false, message: "No user message to regenerate from" });
+    }
+
+    const prompt = prevUserMsg.content;
+    const mode = ['text', 'study', 'image'].includes(lastMsg.mode) ? lastMsg.mode : 'text';
+    const cost = (mode === 'image' || mode === 'study') ? 2 : 1;
+
+    // Atomic credit deduct BEFORE removing the placeholder; if the user is out
+    // of credits, the stopped state stays exactly as it was.
+    const debited = await User.findOneAndUpdate(
+      { _id: userId, credits: { $gte: cost } },
+      { $inc: { credits: -cost } },
+      { returnDocument: 'after' }
+    );
+    if (!debited) {
+      return res.status(403).json({ success: false, message: "Not enough credits to regenerate" });
+    }
+    debitedAmount = cost;
+
+    // Remove the stopped placeholder so the retried reply can take its place,
+    // and so history sent to the AI doesn't contain a phantom empty turn.
+    chat.messages.pop();
+    await chat.save();
+
+    let reply;
+    let stopped = false;
+
+    if (mode === 'text') {
+      const history = buildHistory(chat.messages.slice(0, -1));
+      let aiContent = '';
+      try {
+        const { data: aiData } = await axios.post(
+          `${PYTHON_AI_URL}/chat`,
+          { prompt, history },
+          { timeout: 90000, headers: PY_HEADERS }
+        );
+        aiContent = aiData.response || '';
+        if (!aiContent.trim()) stopped = true;
+      } catch (e) {
+        console.error('Regenerate text error:', e.message);
+        stopped = true;
+      }
+      reply = {
+        role: 'assistant',
+        content: stopped ? '' : aiContent,
+        timestamp: Date.now(),
+        isImage: false,
+        stopped,
+        mode: 'text',
+      };
+    } else if (mode === 'study') {
+      const ragHistory = buildHistory(chat.messages.slice(0, -1));
+      let aiContent = '';
+      try {
+        const { data: aiData } = await axios.post(
+          `${PYTHON_AI_URL}/rag`,
+          { prompt, rag_mode: ragMode, user_id: userId.toString(), history: ragHistory },
+          { timeout: 90000, headers: PY_HEADERS }
+        );
+        aiContent = aiData.response || '';
+        if (!aiContent.trim()) stopped = true;
+      } catch (e) {
+        console.error('Regenerate rag error:', e.message);
+        stopped = true;
+      }
+      reply = {
+        role: 'assistant',
+        content: stopped ? '' : aiContent,
+        timestamp: Date.now(),
+        isImage: false,
+        stopped,
+        mode: 'study',
+      };
+    } else { // image
+      let url = '';
+      try {
+        const cleanPrompt = prompt.replace(/^(draw|generate|create|make)\s+(an\s+)?(image\s+)?(of\s+)?/i, '').trim();
+        const imageBuffer = await generateImageBuffer(cleanPrompt || prompt);
+        const upload = await imagekit.upload({
+          file: imageBuffer.toString('base64'),
+          fileName: `gen-${Date.now()}.png`,
+          folder: "quickgpt",
+        });
+        url = upload.url;
+      } catch (e) {
+        console.error('Regenerate image error:', e.message);
+        stopped = true;
+      }
+      reply = {
+        role: 'assistant',
+        content: stopped ? '' : url,
+        timestamp: Date.now(),
+        isImage: !stopped,
+        isPublished: !stopped && Boolean(isPublished),
+        stopped,
+        mode: 'image',
+      };
+    }
+
+    chat.messages.push(reply);
+    await chat.save();
+
+    if (stopped) {
+      await User.findByIdAndUpdate(userId, { $inc: { credits: cost } });
+    }
+
+    // If this regeneration completed the very first exchange of the chat and
+    // succeeded, kick off the background title generation we skipped earlier.
+    const userMsgCount = chat.messages.filter(m => m.role === 'user').length;
+    if (!stopped && userMsgCount === 1 && (mode === 'text' || mode === 'study')) {
+      const prefix = mode === 'study' ? '📚 ' : '';
+      generateChatTitle(chat._id, prompt, reply.content, prefix, chat.name);
+    }
+
+    return res.status(200).json({ success: true, reply, stopped });
+
+  } catch (err) {
+    console.error("Regenerate error:", err.message);
+    // Refund whatever was debited before the failure (0 if we never got there).
+    await refundCredits(req.user?._id, debitedAmount);
+    return res.status(500).json({ success: false, message: "Failed to regenerate" });
   }
 };
 

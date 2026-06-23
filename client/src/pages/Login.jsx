@@ -16,12 +16,30 @@ const Login = () => {
   const [otp, setOtp] = useState('')
   const [newPassword, setNewPassword] = useState('')
 
+  // Email verification (post-signup / unverified login)
+  const [verifyMode, setVerifyMode] = useState(false)
+  const [verifyCode, setVerifyCode] = useState('')
+
+  const enterVerify = (msg) => {
+    setVerifyMode(true)
+    setVerifyCode('')
+    if (msg) toast(msg)
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     const url = state === 'login' ? '/api/user/login' : '/api/user/register'
 
     try {
       const { data } = await axios.post(url, { name, email, password })
+
+      // Registration (or login of an unverified account) returns a
+      // needsVerification flag instead of a token — switch to the code step.
+      if (data.needsVerification) {
+        enterVerify(data.message || 'Check your email for a verification code')
+        return
+      }
+
       if (data.success) {
         setToken(data.token)
         localStorage.setItem('token', data.token)
@@ -29,9 +47,15 @@ const Login = () => {
         toast.error(data.message)
       }
     } catch (err) {
+      // Login blocked because the email isn't verified yet (HTTP 403).
+      if (err.response?.data?.needsVerification) {
+        enterVerify(err.response.data.message || 'Please verify your email to continue')
+        return
+      }
+
       const msg = err.response?.data?.message || err.message
       toast.error(msg)
-      
+
       // If account not found, switch to register mode automatically
       if (err.response?.status === 404 && !isForgot) {
         setTimeout(() => setState('register'), 1000)
@@ -42,6 +66,37 @@ const Login = () => {
         setTimeout(() => setState('login'), 1000)
       }
     }
+  }
+
+  const handleVerify = async (e) => {
+    e.preventDefault()
+    try {
+      const { data } = await axios.post('/api/user/verify-email', { email, code: verifyCode.trim() })
+      if (data.success) {
+        toast.success('Email verified — welcome to Prompto!')
+        setToken(data.token)
+        localStorage.setItem('token', data.token)
+      } else {
+        toast.error(data.message)
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message)
+    }
+  }
+
+  const handleResendVerification = async () => {
+    try {
+      const { data } = await axios.post('/api/user/resend-verification', { email })
+      toast.success(data.message || 'A new code has been sent')
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message)
+    }
+  }
+
+  const exitVerify = () => {
+    setVerifyMode(false)
+    setVerifyCode('')
+    setState('login')
   }
 
   const handleForgotPassword = async (e) => {
@@ -88,7 +143,7 @@ const Login = () => {
       <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-accent/5 blur-[100px] rounded-full" />
 
       <form
-        onSubmit={isForgot ? handleForgotPassword : handleSubmit}
+        onSubmit={isForgot ? handleForgotPassword : verifyMode ? handleVerify : handleSubmit}
         className="
           w-full max-w-[420px]
           glass rounded-[2.5rem]
@@ -102,7 +157,9 @@ const Login = () => {
             <img src={assets.logo} className="w-14 rounded-xl" alt="logo" />
           </div>
           <h1 className="text-3xl font-black tracking-tight text-center">
-            {isForgot ? (
+            {verifyMode ? (
+              <>Verify <span className="text-gradient">Email</span></>
+            ) : isForgot ? (
               <>Reset <span className="text-gradient">Access</span></>
             ) : state === 'login' ? (
               <>Welcome <span className="text-gradient">Back</span></>
@@ -111,13 +168,15 @@ const Login = () => {
             )}
           </h1>
           <p className="text-muted text-[10px] font-black mt-3 opacity-80 uppercase tracking-widest text-center px-4">
-            {isForgot ? `Step ${resetStep} of 3` : state === 'login' ? 'Continue your creative journey' : 'Start your neural odyssey today'}
+            {verifyMode
+              ? 'Enter the code sent to your email'
+              : isForgot ? `Step ${resetStep} of 3` : state === 'login' ? 'Continue your creative journey' : 'Start your neural odyssey today'}
           </p>
         </div>
 
         {/* Input Fields Container */}
         <div className="space-y-5">
-          {!isForgot && state === 'register' && (
+          {!isForgot && !verifyMode && state === 'register' && (
             <div className="space-y-2">
               <label className="block text-[10px] font-black uppercase tracking-widest text-muted ml-1">Full Name</label>
               <input value={name} onChange={e => setName(e.target.value)} type="text" required placeholder="Enter your name"
@@ -127,9 +186,21 @@ const Login = () => {
 
           <div className="space-y-2">
             <label className="block text-[10px] font-black uppercase tracking-widest text-muted ml-1">Email Address</label>
-            <input value={email} onChange={e => setEmail(e.target.value)} type="email" required placeholder="name@example.com" disabled={isForgot && resetStep > 1}
+            <input value={email} onChange={e => setEmail(e.target.value)} type="email" required placeholder="name@example.com" disabled={(isForgot && resetStep > 1) || verifyMode}
               className="w-full px-5 py-3.5 bg-accent-soft/30 border border-border/50 rounded-2xl text-sm font-medium outline-none focus:border-accent/40 focus:ring-4 focus:ring-accent/5 transition-all disabled:opacity-50" />
           </div>
+
+          {verifyMode && (
+            <div className="space-y-2 animate-slide-up">
+              <label className="block text-[10px] font-black uppercase tracking-widest text-muted ml-1">Verification Code</label>
+              <input value={verifyCode} onChange={e => setVerifyCode(e.target.value.replace(/\s/g, ''))} type="text" inputMode="numeric" required placeholder="Enter 6-digit code"
+                className="w-full px-5 py-3.5 bg-accent-soft/30 border border-border/50 rounded-2xl text-sm font-medium outline-none focus:border-accent/40 focus:ring-4 focus:ring-accent/5 transition-all" />
+              <p className="text-[10px] text-muted ml-1">
+                Didn't get it?{' '}
+                <span onClick={handleResendVerification} className="text-accent font-bold cursor-pointer hover:underline">Resend code</span>
+              </p>
+            </div>
+          )}
 
           {isForgot && resetStep >= 2 && (
             <div className="space-y-2 animate-slide-up">
@@ -147,7 +218,7 @@ const Login = () => {
             </div>
           )}
 
-          {!isForgot && (
+          {!isForgot && !verifyMode && (
             <div className="space-y-2">
               <div className="flex justify-between items-center px-1">
                 <label className="block text-[10px] font-black uppercase tracking-widest text-muted">Secret Password</label>
@@ -162,7 +233,13 @@ const Login = () => {
         </div>
 
         {/* Switch mode context */}
-        {!isForgot ? (
+        {verifyMode ? (
+          <p className="text-[10px] text-muted mt-8 mb-6 text-center font-bold uppercase tracking-wider">
+            Wrong email?
+            <span onClick={exitVerify}
+              className="text-accent font-black cursor-pointer hover:underline underline-offset-4 decoration-2"> Back to Login</span>
+          </p>
+        ) : !isForgot ? (
           <p className="text-[10px] text-muted mt-8 mb-6 text-center font-bold uppercase tracking-wider">
             {state === 'register' ? 'Already part of the community? ' : 'New to the platform? '}
             <span onClick={() => setState(state === 'login' ? 'register' : 'login')}
@@ -183,9 +260,11 @@ const Login = () => {
           type="submit"
           className="w-full py-4 text-sm font-black uppercase tracking-widest rounded-2xl bg-accent text-white shadow-lg hover:shadow-accent/40 hover:scale-[1.02] active:scale-95 transition-all duration-300"
         >
-          {isForgot 
-            ? (resetStep === 1 ? 'Send Code' : resetStep === 2 ? 'Verify Code' : 'Update Password')
-            : (state === 'register' ? 'Establish Account' : 'Authenticate')}
+          {verifyMode
+            ? 'Verify Email'
+            : isForgot
+              ? (resetStep === 1 ? 'Send Code' : resetStep === 2 ? 'Verify Code' : 'Update Password')
+              : (state === 'register' ? 'Establish Account' : 'Authenticate')}
         </button>
       </form>
 

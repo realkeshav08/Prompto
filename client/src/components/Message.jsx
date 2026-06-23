@@ -51,6 +51,11 @@ const Message = ({ message }) => {
           <div className="text-[15px] leading-relaxed font-semibold tracking-tight whitespace-pre-wrap">
             {message.content}
           </div>
+        ) : message.stopped ? (
+          <div className="flex items-center gap-2 text-muted/80 italic text-[14px] font-medium">
+            <span className="text-lg leading-none">⏹</span>
+            <span>Stopped</span>
+          </div>
         ) : (
           <div className="chat-md text-[15px]">
             <ReactMarkdown>{message.content}</ReactMarkdown>

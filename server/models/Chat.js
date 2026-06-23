@@ -33,6 +33,22 @@ const MessageSchema = new Schema(
       default: false,
     },
 
+    // True on an assistant placeholder saved when generation failed/timed out.
+    // The UI renders these as "⏹ Stopped" with a Regenerate button instead of
+    // the missing reply, so the user message before it is never orphaned.
+    stopped: {
+      type: Boolean,
+      default: false,
+    },
+
+    // Records which generation pipeline produced (or attempted) this assistant
+    // message. Lets the Regenerate endpoint pick the right pipeline on retry.
+    // Undefined on legacy/user messages.
+    mode: {
+      type: String,
+      enum: ['text', 'study', 'image'],
+    },
+
     timestamp: {
       type: Date,
       default: Date.now,

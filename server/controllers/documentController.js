@@ -13,6 +13,7 @@ import mongoose from 'mongoose';
 import ai from '../configs/ai.js';
 import dns from 'dns/promises';
 import net from 'net';
+import { isPrivateAddress, isBlockedHostname } from '../utils/network.js';
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /*  MULTER — memory storage (we embed and discard, no disk writes)             */
@@ -106,28 +107,8 @@ async function extractText(file) {
 
 /* SSRF guard — reject URLs that resolve to private/internal addresses so the
    URL-ingestion feature can't be used to reach localhost, the LAN, or cloud
-   metadata endpoints (e.g. 169.254.169.254). */
-function isPrivateAddress(ip) {
-  if (net.isIPv4(ip)) {
-    const p = ip.split('.').map(Number);
-    return (
-      p[0] === 0 || p[0] === 10 || p[0] === 127 ||
-      (p[0] === 100 && p[1] >= 64 && p[1] <= 127) ||   // CGNAT
-      (p[0] === 169 && p[1] === 254) ||                // link-local / metadata
-      (p[0] === 172 && p[1] >= 16 && p[1] <= 31) ||
-      (p[0] === 192 && p[1] === 168) ||
-      p[0] >= 224                                      // multicast / reserved
-    );
-  }
-  const v6 = ip.toLowerCase();
-  return (
-    v6 === '::1' || v6 === '::' ||
-    v6.startsWith('fc') || v6.startsWith('fd') ||      // unique-local
-    v6.startsWith('fe80') ||                           // link-local
-    v6.startsWith('::ffff:')                           // IPv4-mapped
-  );
-}
-
+   metadata endpoints. The address/hostname predicates live in utils/network.js
+   so they can be unit tested in isolation. */
 async function assertSafeUrl(rawUrl) {
   let parsed;
   try {
@@ -139,7 +120,7 @@ async function assertSafeUrl(rawUrl) {
     throw new Error('Only http and https URLs are supported');
   }
   const host = parsed.hostname.toLowerCase();
-  if (/^(localhost|.*\.local|.*\.internal)$/.test(host)) {
+  if (isBlockedHostname(host)) {
     throw new Error('That URL is not allowed');
   }
   let addresses;
@@ -163,10 +144,7 @@ async function extractFromUrl(url) {
     beforeRedirect: (options) => {
       // Re-check every redirect hop so a benign URL can't bounce to an internal one.
       const h = String(options.hostname || options.host || '').toLowerCase();
-      if (
-        /^(localhost|.*\.local|.*\.internal)$/.test(h) ||
-        (net.isIP(h) && isPrivateAddress(h))
-      ) {
+      if (isBlockedHostname(h) || (net.isIP(h) && isPrivateAddress(h))) {
         throw new Error('Redirect to a private network is not allowed');
       }
     },
@@ -321,7 +299,8 @@ export const listDocuments = async (req, res) => {
       .lean();
     return res.json({ success: true, documents: docs });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    console.error('List documents error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to list documents' });
   }
 };
 
@@ -334,8 +313,17 @@ export const deleteDocument = async (req, res) => {
     const userId = req.user._id;
     const { id } = req.params;
 
-    // A user can delete their own documents or any shared/global document.
-    const doc = await Document.findOne({ _id: id, $or: [{ userId }, { isGlobal: true }] });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid document id' });
+    }
+
+    // A user may delete only their OWN documents. Global/shared documents back
+    // every user's Study AI, so only the configured admin may remove them —
+    // otherwise any account could wipe shared knowledge for everyone.
+    const isAdmin = !!process.env.ADMIN_EMAIL && req.user?.email === process.env.ADMIN_EMAIL;
+    const ownership = isAdmin ? { $or: [{ userId }, { isGlobal: true }] } : { userId };
+
+    const doc = await Document.findOne({ _id: id, ...ownership });
     if (!doc) return res.status(404).json({ success: false, message: 'Document not found' });
 
     // Delete chunks from vector store collection directly.
@@ -347,6 +335,7 @@ export const deleteDocument = async (req, res) => {
 
     return res.json({ success: true, message: 'Document deleted' });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    console.error('Delete document error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to delete document' });
   }
 };

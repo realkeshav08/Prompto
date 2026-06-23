@@ -18,7 +18,9 @@ const connectDB = async () => {
 
     await mongoose.connect(mongoURI, {
       dbName: 'quickgpt',
-      autoIndex: true,
+      // Building indexes on every boot is fine in dev but expensive and risky
+      // under production load — manage indexes via a migration there instead.
+      autoIndex: process.env.NODE_ENV !== 'production',
     });
 
   } catch (error) {

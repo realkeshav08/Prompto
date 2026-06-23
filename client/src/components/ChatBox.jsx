@@ -110,17 +110,22 @@ const ChatBox = () => {
           return updated.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
         })
 
-        setUser(prev => ({
-          ...prev,
-          // video 4 · image 2 · study 2 · text 1
-          credits: prev.credits - (sendMode === 'video' ? 4 : sendMode === 'image' ? 2 : sendMode === 'study' ? 2 : 1)
-        }))
+        // A stopped reply means the server already refunded the credit and
+        // there's no title to fetch — skip both. The user still sees the
+        // ⏹ Stopped bubble with a Regenerate button (rendered below).
+        if (!data.reply?.stopped) {
+          setUser(prev => ({
+            ...prev,
+            // video 4 · image 2 · study 2 · text 1
+            credits: prev.credits - (sendMode === 'video' ? 4 : sendMode === 'image' ? 2 : sendMode === 'study' ? 2 : 1)
+          }))
 
-        // First exchange — the server generates a clean AI title in the
-        // background; pull it in once ready (text & study modes only).
-        if (isFirstMessage && (sendMode === 'text' || sendMode === 'study')) {
-          setTimeout(() => refreshChatTitle(chatId), 3000)
-          setTimeout(() => refreshChatTitle(chatId), 7000)
+          // First exchange — the server generates a clean AI title in the
+          // background; pull it in once ready (text & study modes only).
+          if (isFirstMessage && (sendMode === 'text' || sendMode === 'study')) {
+            setTimeout(() => refreshChatTitle(chatId), 3000)
+            setTimeout(() => refreshChatTitle(chatId), 7000)
+          }
         }
       } else {
         toast.error(data.message)
@@ -160,6 +165,67 @@ const ChatBox = () => {
       sendRagMode: ragMode,
       sendIsPublished: isPublished,
     })
+  }
+
+  // ChatGPT-style retry: re-runs the AI for the chat whose last assistant
+  // message is `stopped`. The server reads the mode off that stopped
+  // placeholder, so a fresh page reload can still regenerate without the
+  // client remembering the original send mode.
+  const regenerateLastReply = async () => {
+    if (loadingChatId !== null || !selectedChat) return
+    const last = messages[messages.length - 1]
+    if (!last || last.role !== 'assistant' || !last.stopped) return
+
+    const chatId = selectedChat._id
+    setLoadingChatId(chatId)
+
+    // Optimistically drop the stopped bubble while the new reply is fetched.
+    setMessages(prev => prev.slice(0, -1))
+
+    try {
+      const { data } = await axios.post(
+        '/api/message/regenerate',
+        { chatId, ragMode, isPublished },
+        { timeout: 180000 }
+      )
+
+      if (data.success) {
+        setMessages(prev => [...prev, data.reply])
+
+        // Replace the stopped placeholder in the sidebar with the new reply.
+        setChats(prev => prev.map(c => {
+          if (c._id !== chatId) return c
+          const msgs = [...c.messages]
+          const lastIdx = msgs.length - 1
+          if (lastIdx >= 0 && msgs[lastIdx].role === 'assistant' && msgs[lastIdx].stopped) {
+            msgs[lastIdx] = data.reply
+          } else {
+            msgs.push(data.reply)
+          }
+          return { ...c, messages: msgs, updatedAt: new Date().toISOString() }
+        }))
+
+        // Server charges only on success; mirror that locally.
+        if (!data.reply?.stopped) {
+          const mode = data.reply?.mode
+          const cost = mode === 'image' || mode === 'study' ? 2 : 1
+          setUser(prev => ({ ...prev, credits: prev.credits - cost }))
+        }
+      } else {
+        // Server rejected the regenerate — restore the stopped bubble so the
+        // user still sees the original state and can try again.
+        setMessages(prev => [...prev, last])
+        toast.error(data.message || 'Could not regenerate')
+      }
+    } catch (err) {
+      setMessages(prev => [...prev, last])
+      toast.error(err.response?.data?.message || err.message)
+      if (err.response?.status === 403) {
+        setTimeout(() => navigate('/credits', { state: { skipSplash: true } }), 1500)
+      }
+    } finally {
+      setLoadingChatId(null)
+    }
   }
 
   // Retry a message that failed to send, using the mode it was sent with.
@@ -297,14 +363,34 @@ const ChatBox = () => {
                 </button>
               </div>
             )}
+            {m.role === 'assistant' && m.stopped && i === messages.length - 1 && (
+              <div className="flex justify-start items-center gap-2 -mt-5 pl-1 animate-fade-in">
+                <button
+                  onClick={regenerateLastReply}
+                  disabled={loadingChatId !== null}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-accent bg-accent/10 hover:bg-accent/20 disabled:opacity-40 transition-all"
+                >
+                  ↻ Regenerate
+                </button>
+              </div>
+            )}
           </React.Fragment>
         ))}
 
-        {loadingChatId === selectedChat?._id && (
-          <div className="flex gap-2 px-6 py-4 glass w-max rounded-2xl ml-4">
+        {/* Show the "thinking" indicator when:
+            (a) this tab actually has a send in flight, OR
+            (b) the chat ends on a user message with no reply yet — which
+                means the backend is still generating (we just reopened the
+                tab) or the request finished in another tab and we just
+                haven't synced yet. */}
+        {(loadingChatId === selectedChat?._id ||
+          (messages.length > 0 && messages[messages.length - 1].role === 'user'
+            && !messages[messages.length - 1].failed)) && (
+          <div className="flex gap-2 px-6 py-4 glass w-max rounded-2xl ml-4 items-center">
             <span className="w-2 h-2 bg-accent rounded-full animate-bounce" />
             <span className="w-2 h-2 bg-accent rounded-full animate-bounce delay-150" />
             <span className="w-2 h-2 bg-accent rounded-full animate-bounce delay-300" />
+            <span className="text-[10px] font-black uppercase tracking-[0.15em] text-muted ml-2">Generating</span>
           </div>
         )}
       </div>

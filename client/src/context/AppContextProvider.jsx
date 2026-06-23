@@ -27,6 +27,8 @@ export const AppContextProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [chats, setChats] = useState([])
   const [selectedChat, setSelectedChat] = useState(null)
+  // Cursor for paginated chat history. Non-null ⇒ older sessions remain to load.
+  const [chatsCursor, setChatsCursor] = useState(null)
 
   const [theme, setTheme] = useState(
     localStorage.getItem('theme') || 'dark'
@@ -144,11 +146,13 @@ export const AppContextProvider = ({ children }) => {
       }
 
       if (data.chats.length === 0) {
+        setChatsCursor(null)
         await createNewChat(true)
         return
       }
 
       setChats(data.chats || [])
+      setChatsCursor(data.nextCursor ?? null)
       // Always start with a new chat upon login/boot as requested
       await createNewChat(true)
     } catch (err) {
@@ -159,6 +163,25 @@ export const AppContextProvider = ({ children }) => {
       setLoadingChats(false)
     }
   }, [createNewChat])
+
+  // Fetch the next page of older sessions and append them (de-duplicated).
+  const loadMoreChats = useCallback(async () => {
+    if (!chatsCursor) return
+    try {
+      const { data } = await api.get('/api/chat/get', { params: { cursor: chatsCursor } })
+      if (data.success) {
+        setChats(prev => {
+          const seen = new Set(prev.map(c => c?._id))
+          return [...prev, ...(data.chats || []).filter(c => c && !seen.has(c._id))]
+        })
+        setChatsCursor(data.nextCursor ?? null)
+      }
+    } catch (err) {
+      if (err.response?.status !== 401) {
+        toast.error(err.response?.data?.message || err.message)
+      }
+    }
+  }, [chatsCursor])
 
   /* ---------------- THEME ---------------- */
 
@@ -206,7 +229,8 @@ export const AppContextProvider = ({ children }) => {
             const { data } = await api.get('/api/chat/get')
             if (data.success) {
               setChats(data.chats || [])
-              
+              setChatsCursor(data.nextCursor ?? null)
+
               // 🛡️ Ensure we always have a selected chat if on home page.
               // Restore the chat the user had open before the reload.
               if (data.chats?.length === 0) {
@@ -240,7 +264,10 @@ export const AppContextProvider = ({ children }) => {
         if (chatToDelete && (!chatToDelete.messages || chatToDelete.messages.length === 0)) {
           logger.log("🧹 Auto-cleaning empty chat:", prevId);
           try {
-            await api.post('/api/chat/delete', { chatId: prevId });
+            // onlyIfEmpty: server atomically deletes only if messages array is
+            // still empty — races against a parallel send in another tab can
+            // never wipe a real conversation.
+            await api.post('/api/chat/delete', { chatId: prevId, onlyIfEmpty: true });
             setChats(prev => prev.filter(c => c._id !== prevId));
           } catch (err) {
             console.error("Cleanup failed:", err);
@@ -274,6 +301,41 @@ export const AppContextProvider = ({ children }) => {
     }
   }, [chats, selectedChat]);
 
+  /* ---------------- TAB-CLOSE CLEANUP ----------------
+     sessionStorage is per-tab, so every fresh tab triggers the auto-create
+     branch and spawns an empty "New Chat". If the user closes the tab without
+     sending anything, that placeholder would otherwise stay in the DB and pile
+     up over multiple opens. On `pagehide` we fire a one-shot conditional
+     delete using fetch's `keepalive` flag (the only browser API that lets us
+     send a POST with the Authorization header AFTER the page is unloading).
+     The server-side `onlyIfEmpty` guard means this can never delete a chat
+     that has any messages — including one whose first message landed in the
+     same browser via another tab.                                            */
+  useEffect(() => {
+    if (!token) return;
+    const handler = () => {
+      const chatId = selectedChat?._id;
+      if (!chatId) return;
+      const chat = chats.find(c => c._id === chatId);
+      if (!chat) return;
+      if (chat.messages && chat.messages.length > 0) return;
+      try {
+        fetch(`${import.meta.env.VITE_SERVER_URL}/api/chat/delete`, {
+          method: 'POST',
+          keepalive: true,
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ chatId, onlyIfEmpty: true }),
+        });
+      } catch { /* fire-and-forget; cleanup is best-effort */ }
+    };
+    window.addEventListener('pagehide', handler);
+    return () => window.removeEventListener('pagehide', handler);
+  }, [selectedChat, chats, token]);
+
   /* ---------------- CONTEXT VALUE ---------------- */
 
   const value = useMemo(() => ({
@@ -293,6 +355,8 @@ export const AppContextProvider = ({ children }) => {
     fetchUser,
     fetchUsersChats,
     createNewChat,
+    loadMoreChats,
+    chatsCursor,
     axios: api // ⭐ Use the specialized instance
   }), [
     navigate,
@@ -305,7 +369,9 @@ export const AppContextProvider = ({ children }) => {
     loadingChats,
     fetchUser,
     fetchUsersChats,
-    createNewChat
+    createNewChat,
+    loadMoreChats,
+    chatsCursor
   ])
 
   return (

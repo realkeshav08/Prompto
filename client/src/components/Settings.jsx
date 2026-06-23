@@ -77,6 +77,14 @@ const Settings = ({ isOpen, onClose }) => {
     }
   }, [isOpen, user?.name])
 
+  // Close the modal on Escape for keyboard users.
+  useEffect(() => {
+    if (!isOpen) return
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isOpen, onClose])
+
   if (!isOpen) return null
 
   const saveName = async () => {
@@ -108,6 +116,13 @@ const Settings = ({ isOpen, onClose }) => {
         newPassword: newPw,
       })
       if (data.success) {
+        // The server rotates tokenVersion on a password change (logging out
+        // other sessions), so adopt the freshly minted token it returns to
+        // keep THIS session authenticated.
+        if (data.token) {
+          localStorage.setItem('token', data.token)
+          setToken(data.token)
+        }
         toast.success('Password changed')
         setCurPw(''); setNewPw(''); setConfirmPw('')
       } else toast.error(data.message)
@@ -118,7 +133,10 @@ const Settings = ({ isOpen, onClose }) => {
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Revoke server-side (bumps tokenVersion so the token can't be reused),
+    // then clear locally. Best-effort: a failed call still logs out this device.
+    try { await axios.post('/api/user/logout') } catch { /* ignore */ }
     localStorage.removeItem('token')
     setToken(null)
     onClose()
@@ -133,12 +151,18 @@ const Settings = ({ isOpen, onClose }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative glass rounded-3xl w-full max-w-2xl shadow-premium flex flex-col max-h-[88vh]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        className="relative glass rounded-3xl w-full max-w-2xl shadow-premium flex flex-col max-h-[88vh]"
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border/40">
           <h2 className="text-lg font-black text-text">⚙️ Settings</h2>
           <button
             onClick={onClose}
+            aria-label="Close settings"
             className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-accent/10 text-muted hover:text-text transition-all"
           >
             ✕

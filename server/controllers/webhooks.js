@@ -41,29 +41,43 @@ export const stripeWebhooks = async (req, res) => {
 
         const { transactionId, app } = session.metadata || {};
 
-        /* ---- Validate metadata ---- */
-        /* ---- Idempotent transaction lookup ---- */
-        const transaction = await Transaction.findOne({
-          _id: transactionId,
-          isPaid: false,
-        });
-
-        if (!transaction || app !== 'prompto') {
-          // Already processed or invalid
+        if (app !== 'prompto' || !transactionId) {
           return res.json({ received: true });
         }
 
-        /* ---- Credit user ---- */
-        await User.updateOne(
-          { _id: transaction.userId },
-          { $inc: { credits: transaction.credits } }
+        /* ---- Claim the transaction atomically, THEN credit ----
+           Stripe retries delivery for days, so this handler must be exactly-
+           once. We flip isPaid:false → true in a single compare-and-set: only
+           the call that wins the flip proceeds to credit the user. Crediting
+           first (the old order) risked a crash between the credit and the save
+           leaving isPaid=false, so a retry would credit the user a second
+           time. Claiming first makes a duplicate delivery a harmless no-op. */
+        const transaction = await Transaction.findOneAndUpdate(
+          { _id: transactionId, isPaid: false },
+          { $set: { isPaid: true, paidAt: new Date(), stripeSessionId: session.id } },
+          { new: true }
         );
 
-        /* ---- Mark transaction paid ---- */
-        transaction.isPaid = true;
-        transaction.paidAt = new Date();
-        transaction.stripeSessionId = session.id;
-        await transaction.save();
+        // No match ⇒ unknown id or already processed ⇒ nothing to do.
+        if (!transaction) {
+          return res.json({ received: true });
+        }
+
+        try {
+          await User.updateOne(
+            { _id: transaction.userId },
+            { $inc: { credits: transaction.credits } }
+          );
+        } catch (creditErr) {
+          // Crediting failed after we claimed the transaction. Release the
+          // claim so Stripe's automatic retry can re-process and credit the
+          // user, instead of leaving them paid-but-not-credited.
+          await Transaction.updateOne(
+            { _id: transaction._id },
+            { $set: { isPaid: false }, $unset: { paidAt: '', stripeSessionId: '' } }
+          ).catch(() => {});
+          throw creditErr;
+        }
 
         break;
       }

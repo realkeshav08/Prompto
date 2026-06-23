@@ -43,7 +43,9 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
     axios,
     setChats,
     token,
-    fetchUsersChats
+    fetchUsersChats,
+    loadMoreChats,
+    chatsCursor
   } = useAppContext()
 
   const [search, setSearch] = useState('')
@@ -170,8 +172,9 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
           {/* Recent History Header */}
           <div className="flex items-center justify-between mb-3 px-2">
             <p className="text-[10px] font-bold text-muted tracking-widest uppercase">Recent activity</p>
-            <button 
+            <button
               onClick={fetchUsersChats}
+              aria-label="Refresh chat history"
               className="p-1 hover:bg-accent/10 rounded-lg transition-all active:rotate-180 duration-500"
               title="Refresh history"
             >
@@ -291,6 +294,7 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
                     <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-300 z-20">
                       <button
                         onClick={e => { e.stopPropagation(); startRename(chat) }}
+                        aria-label="Rename chat"
                         className="p-1.5 rounded-lg bg-panel border border-border shadow-sm text-text/80 hover:text-white hover:bg-accent hover:border-accent transition-all"
                         title="Rename chat"
                       >
@@ -300,6 +304,7 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
                       </button>
                       <button
                         onClick={e => deleteChat(e, chat._id)}
+                        aria-label="Delete chat"
                         className="p-1.5 rounded-lg bg-panel border border-border shadow-sm text-red-400 hover:text-white hover:bg-red-500 hover:border-red-500 transition-all"
                         title="Delete chat"
                       >
@@ -313,6 +318,17 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
               )
             })
           })()
+        )}
+
+        {/* Load older sessions — only when more history exists on the server and
+            the user isn't filtering the loaded list. */}
+        {chatsCursor && !search.trim() && (
+          <button
+            onClick={loadMoreChats}
+            className="w-full py-2.5 mt-1 rounded-xl text-[10px] font-black uppercase tracking-widest text-accent bg-accent/5 hover:bg-accent/10 transition-all"
+          >
+            Load older sessions
+          </button>
         )}
       </div>
 
@@ -360,6 +376,10 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
           
           <div
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            role="button"
+            tabIndex={0}
+            aria-label="Toggle light or dark theme"
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTheme(theme === 'dark' ? 'light' : 'dark') } }}
             className="p-2.5 bg-panel border border-border rounded-xl cursor-pointer hover:bg-accent/5 transition-all"
           >
             <div className="w-4 h-4 flex items-center justify-center">

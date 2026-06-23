@@ -1,17 +1,20 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, Suspense, lazy } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 
 import Sidebar from './components/Sidebar'
 import ChatBox from './components/ChatBox'
-import Credits from './pages/Credits'
-import Community from './pages/Community'
 import Loading from './pages/Loading'
 import Login from './pages/Login'
 
 import { useAppContext } from './context'
 import { assets } from './assets/assets'
 import './assets/prism.css'
+
+// Route-level code splitting: the Credits and Community pages (and their heavy
+// dependencies) load only when first visited, shrinking the initial bundle.
+const Credits = lazy(() => import('./pages/Credits'))
+const Community = lazy(() => import('./pages/Community'))
 
 // Landing target for Stripe's success_url after a completed payment.
 // Refreshes the user (so new credits show) then routes to the Credits page.
@@ -106,12 +109,14 @@ const App = () => {
           />
 
           <main className="flex-1 h-full overflow-hidden">
-            <Routes>
-              <Route path="/" element={<ChatBox />} />
-              <Route path="/credits" element={<Credits />} />
-              <Route path="/community" element={<Community />} />
-              <Route path="/loading" element={<PaymentReturn />} />
-            </Routes>
+            <Suspense fallback={<Loading type="nav" />}>
+              <Routes>
+                <Route path="/" element={<ChatBox />} />
+                <Route path="/credits" element={<Credits />} />
+                <Route path="/community" element={<Community />} />
+                <Route path="/loading" element={<PaymentReturn />} />
+              </Routes>
+            </Suspense>
           </main>
         </div>
       ) : (
