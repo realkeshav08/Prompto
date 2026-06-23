@@ -13,10 +13,11 @@ credit-based billing system.
 - **AI-generated chat titles** — Each conversation is auto-named from its first exchange; titles are also editable.
 - **Conversation memory** — A bounded, recent-context window of the chat history is passed to the model for coherent multi-turn replies.
 - **Resilient image generation** — A cascade of free providers (Pollinations → Gemini → ImageKit) so a quota limit on one doesn't break image creation.
+- **Resilient messaging** — A failed/timed-out reply is saved as a "Stopped" placeholder (the user's message is never lost) with one-click **Regenerate**; credits are refunded automatically.
 - **Credit system** — Stripe-integrated billing with per-feature credit costs and automatic refunds on failure.
-- **Community Gallery** — Publish and browse AI-generated images.
+- **Community Gallery** — Publish and browse AI-generated images, plus a **My Uploads** view to remove your own creations from the community.
 - **In-app Settings** — Profile, password change, plan/credits, theme, and Terms / Privacy.
-- **Secure auth** — JWT authentication, bcrypt password hashing, and OTP-based password recovery.
+- **Secure auth** — JWT authentication with session revocation, bcrypt password hashing, email verification at signup, and OTP-based password recovery.
 
 ---
 
@@ -31,6 +32,8 @@ credit-based billing system.
 - LangChain (`@langchain/mongodb`, `@langchain/google-genai`) for document ingestion
 - ImageKit SDK, Stripe API, Nodemailer
 - `helmet`, `compression`, `express-rate-limit`, `zod` (input validation)
+- `pino` structured logging with request IDs; optional Redis-backed rate limiting and Sentry error tracking
+- `vitest` unit tests
 
 ### AI Microservice (Python)
 - FastAPI + Uvicorn
@@ -139,14 +142,20 @@ New accounts start with 100 credits.
 
 ## Security
 
-- JWT auth with bcrypt-hashed passwords; OTP password recovery.
-- Rate limiting on auth/password endpoints (brute-force protection) and stricter
-  limits on AI generation endpoints (`/api/message`) to cap cost/abuse.
+- JWT auth with bcrypt-hashed passwords and **session revocation** via a token
+  version (logout / password change / reset invalidate prior tokens).
+- **Email verification** at signup; password recovery uses a hashed, expiring OTP
+  with a wrong-attempt lockout (codes are never stored in plaintext).
+- Rate limiting on auth/password endpoints (brute-force protection), stricter
+  limits on AI generation (`/api/message`) and document upload endpoints to cap
+  cost/abuse; optionally Redis-backed for multi-instance deployments.
 - Request body size limits and Zod schema validation on message inputs.
+- **Stripe webhook is exactly-once** (atomic claim-then-credit) so retries can't
+  double-credit; credits are refunded on any generation failure.
 - The Python AI service requires an internal shared key (`INTERNAL_API_KEY`) and
   binds to localhost only — it is never publicly exposed.
 - URL document ingestion is SSRF-guarded (private/internal addresses blocked).
-- Shared "global" Study AI documents can only be uploaded by `ADMIN_EMAIL`.
+- Shared "global" Study AI documents can only be uploaded **or deleted** by `ADMIN_EMAIL`.
 - AI system prompts are hardened against prompt injection and document poisoning.
 
 ---
@@ -166,6 +175,10 @@ a systemd startup hook):
 - Set the **same** `INTERNAL_API_KEY` on the backend and the Python service.
 - Register the production Stripe webhook at `/api/webhook/stripe`.
 - Lock MongoDB Atlas **Network Access** to the VPS IP only.
+- Point health checks at **`/health`** (reports `503` when the DB is down). The
+  server shuts down gracefully on `SIGTERM`/`SIGINT`, draining in-flight requests.
+- Optional env vars: `REDIS_URL` (shared rate limiting across workers/instances),
+  `SENTRY_DSN` (error tracking — also `npm i @sentry/node`), `LOG_LEVEL` (default `info`).
 
 ---
 
