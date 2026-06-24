@@ -252,8 +252,11 @@ const ChatBox = () => {
   // conversation gets wiped and it looks like a new chat opened.
   useEffect(() => {
     if (selectedChat) {
+      // Intentional: sync local message list to the newly selected chat.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMessages(selectedChat.messages || [])
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChat?._id])
 
   // Remember where the user is scrolled within the current chat.
@@ -285,6 +288,8 @@ const ChatBox = () => {
     }
 
     c.scrollTo({ top: c.scrollHeight, behavior: 'smooth' })
+    // Intentional: this scroll behaviour should re-run only when messages change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages])
 
   return (

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useState } from 'react'
 import { useAppContext } from '../context'
 import { assets } from '../assets/assets'
 
@@ -15,7 +15,9 @@ const QUOTES = [
 // type: 'welcome' (first visit) | 'reload' (page refresh) | 'nav' (section switch)
 const Loading = ({ type = 'nav' }) => {
   const { user, loadingUser, token } = useAppContext()
-  const quote = useMemo(() => QUOTES[Math.floor(Math.random() * QUOTES.length)], [])
+  // Pick a random quote once on mount. Math.random() is impure, so it must run
+  // inside a lazy useState initializer (called only once) — not during render.
+  const [quote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)])
 
   // A stored session is still resolving — neutral state until we know the user.
   const syncing = loadingUser && token

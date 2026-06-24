@@ -108,9 +108,8 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
     }
   }
 
-  try {
-    return (
-      <>
+  return (
+    <>
       <aside
         className={`
           h-screen w-80 flex flex-col
@@ -403,11 +402,7 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
       </aside>
       <Settings isOpen={showSettings} onClose={() => setShowSettings(false)} />
       </>
-    )
-  } catch (e) {
-    console.error("Sidebar critical error:", e)
-    return <div className="w-80 bg-red-900/10 p-10">Sidebar Error</div>
-  }
+  )
 }
 
 export default Sidebar

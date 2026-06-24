@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppContext } from '../context'
 import toast from 'react-hot-toast'
 
@@ -14,11 +14,9 @@ const DocumentUpload = ({ isOpen, onClose }) => {
   const [deleting, setDeleting] = useState(null)
   const [isGlobal, setIsGlobal] = useState(false)
 
-  useEffect(() => {
-    if (isOpen) fetchDocs()
-  }, [isOpen])
-
-  const fetchDocs = async () => {
+  // Declared before the effect (and memoised) so it can be a stable, valid
+  // dependency — avoids the "used before declaration" immutability error.
+  const fetchDocs = useCallback(async () => {
     try {
       const { data } = await axios.get('/api/document/list', {
         headers: { Authorization: token },
@@ -27,7 +25,13 @@ const DocumentUpload = ({ isOpen, onClose }) => {
     } catch {
       // silent
     }
-  }
+  }, [axios, token])
+
+  useEffect(() => {
+    // Intentional: refresh the document list whenever the panel opens.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (isOpen) fetchDocs()
+  }, [isOpen, fetchDocs])
 
   const handleFileUpload = async (file) => {
     if (!file) return

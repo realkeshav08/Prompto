@@ -3,6 +3,7 @@ import { Route, Routes, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 
 import Sidebar from './components/Sidebar'
+import ErrorBoundary from './components/ErrorBoundary'
 import ChatBox from './components/ChatBox'
 import Loading from './pages/Loading'
 import Login from './pages/Login'
@@ -66,6 +67,8 @@ const App = () => {
     prevPath.current = pathname
     // Some navigations opt out of the splash (e.g. the out-of-credits redirect).
     if (location.state?.skipSplash) return
+    // Intentional: a timed splash is an effect-driven UI reaction to navigation.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSplash('nav')
     const t = setTimeout(() => setSplash(null), 1000)
     return () => clearTimeout(t)
@@ -103,10 +106,12 @@ const App = () => {
 
       {user ? (
         <div className="flex h-full w-full relative z-10">
-          <Sidebar
-            isMenuOpen={isMenuOpen}
-            setIsMenuOpen={setIsMenuOpen}
-          />
+          <ErrorBoundary fallback={<div className="w-80 bg-red-900/10 p-10">Sidebar Error</div>}>
+            <Sidebar
+              isMenuOpen={isMenuOpen}
+              setIsMenuOpen={setIsMenuOpen}
+            />
+          </ErrorBoundary>
 
           <main className="flex-1 h-full overflow-hidden">
             <Suspense fallback={<Loading type="nav" />}>

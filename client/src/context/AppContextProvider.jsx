@@ -203,6 +203,8 @@ export const AppContextProvider = ({ children }) => {
   useEffect(() => {
     if (token) {
       logger.log("🔐 Token detected, bootstrapping...");
+      // Intentional: kick off the auth bootstrap loader on mount / token change.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchUser();
     } else {
       logger.log("🚫 No token, reset state");
@@ -220,6 +222,8 @@ export const AppContextProvider = ({ children }) => {
       if (!hasAutoCreated) {
         logger.log("👤 First Login - Creating New Chat");
         sessionStorage.setItem('hasAutoCreatedFirstChat', 'true');
+        // Intentional: load the user's chats once on first sign-in.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchUsersChats(); // This will trigger createNewChat in its logic
       } else {
         logger.log("👤 Refresh/Return - Syncing Chats only");
@@ -282,6 +286,8 @@ export const AppContextProvider = ({ children }) => {
 
   useEffect(() => {
     if (selectedChat && !chats.some(c => c._id === selectedChat._id)) {
+      // Intentional: clear the selection when its chat disappears from the list.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedChat(null);
     }
   }, [chats, selectedChat]);
@@ -297,6 +303,8 @@ export const AppContextProvider = ({ children }) => {
     if (!selectedChat?._id) return;
     const fresh = chats.find(c => c._id === selectedChat._id);
     if (fresh && fresh !== selectedChat) {
+      // Intentional: mirror the live chats entry so selectedChat never goes stale.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedChat(fresh);
     }
   }, [chats, selectedChat]);

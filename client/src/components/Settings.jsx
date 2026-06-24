@@ -71,6 +71,8 @@ const Settings = ({ isOpen, onClose }) => {
   // Reset the form to current values each time the panel opens.
   useEffect(() => {
     if (isOpen) {
+      // Intentional: reset the form fields each time the panel opens.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTab('profile')
       setName(user?.name || '')
       setCurPw(''); setNewPw(''); setConfirmPw('')
