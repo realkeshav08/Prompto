@@ -1,13 +1,85 @@
 <!doctype html>
+<!-- Single HTML shell for the whole SPA. Browser loads this → runs main.jsx →
+     React mounts the app inside #root. Vite uses this file as the build entry. -->
 <html lang="en">
+  <!-- lang: screen-reader pronunciation + SEO -->
+
   <head>
+    <!-- UTF-8, near the top so bytes decode correctly from first paint -->
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="https://keshavkashyap.sirv.com/keshav_kashyap/alien-svgrepo-com.svg" />
+
+    <!-- Tab icon (local, no CDN) -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Responsive: match page width to device width (mobile) -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Prompto</title>
+
+    <!-- Mobile address-bar colour = dark theme -->
+    <meta name="theme-color" content="#0a0a0a" />
+
+    <!-- ===== PWA: iOS "Add to Home Screen" (iOS ignores the web manifest) ===== -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Prompto" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" /><!-- 180×180 -->
+
+    <!-- Production canonical URL (SEO + share links) -->
+    <link rel="canonical" href="https://prompto.keshavkashyap.me" />
+
+    <!-- Perf: open Google Fonts connection early (before CSS asks) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- CSP is set in vercel.json (HTTP header), NOT here — a strict <meta> CSP
+         would block Vite's dev hot-reload (inline scripts + eval). -->
+
+    <!-- ============================ SEO ============================ -->
+    <title>Prompto — Your AI Workspace</title>
+    <meta
+      name="description"
+      content="Prompto is an AI workspace to chat with AI, upload documents, and get instant answers — all in one place."
+    />
+
+    <!-- =================== Social link previews =================== -->
+    <!-- Open Graph: WhatsApp / Facebook / LinkedIn / Slack cards -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://prompto.keshavkashyap.me" />
+    <meta property="og:site_name" content="Prompto" />
+    <meta property="og:title" content="Prompto — Your AI Workspace" />
+    <meta
+      property="og:description"
+      content="Chat with AI, upload documents, and get instant answers — all in one place."
+    />
+    <!-- OG image must be an ABSOLUTE url (crawlers can't resolve relative paths) -->
+    <meta property="og:image" content="https://prompto.keshavkashyap.me/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Prompto — Your AI Workspace" />
+
+    <!-- Twitter / X card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@keshavkashyappp" />
+    <meta name="twitter:creator" content="@keshavkashyappp" />
+    <meta name="twitter:title" content="Prompto — Your AI Workspace" />
+    <meta
+      name="twitter:description"
+      content="Chat with AI, upload documents, and get instant answers — all in one place."
+    />
+    <meta name="twitter:image" content="https://prompto.keshavkashyap.me/og-image.png" />
   </head>
+
   <body>
+    <!-- React mount point (id must match main.jsx) -->
     <div id="root"></div>
+
+    <!-- Fallback when JS is disabled (this is a JS-rendered app) -->
+    <noscript>
+      Please enable JavaScript to run Prompto. / Prompto chalane ke liye JavaScript enable karein.
+    </noscript>
+
+    <!-- App entry. module = ESM + deferred (runs after #root exists). Vite
+         transforms .jsx in dev; swaps in the hashed bundle in the build. -->
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

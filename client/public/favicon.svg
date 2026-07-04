@@ -1,0 +1,25 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="promotoGradient" x1="100" y1="80" x2="420" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2EA7FF"/>
+      <stop offset="100%" stop-color="#9B4DFF"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(-54 10)">
+    <!-- P-shaped chat bubble -->
+    <path
+      d="M170 420V170C170 110 215 70 280 70H340C405 70 450 115 450 180V220C450 285 405 330 340 330H245L170 420Z"
+      stroke="url(#promotoGradient)"
+      stroke-width="42"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      fill="none"
+    />
+
+    <!-- Chat dots -->
+    <circle cx="250" cy="200" r="14" fill="url(#promotoGradient)" />
+    <circle cx="300" cy="200" r="14" fill="url(#promotoGradient)" />
+    <circle cx="350" cy="200" r="14" fill="url(#promotoGradient)" />
+  </g>
+</svg>
