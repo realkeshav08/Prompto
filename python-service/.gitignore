@@ -1,5 +1,8 @@
 .env
 .env.local
+
+# Personal follow-up TODO from the security audit (not part of the repo)
+PENDING_PYTHON_SERVICE.md
 __pycache__/
 *.pyc
 *.pyo
