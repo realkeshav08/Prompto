@@ -1,3 +1,10 @@
+"""
+Study-AI RAG pipeline.
+
+Retrieves a user's document chunks from MongoDB Atlas Vector Search, wraps them
+as untrusted data behind random fences, then asks Gemini to answer strictly from
+that context — using the same quality-first model fallback as the chat path.
+"""
 import os
 import re
 import secrets
@@ -171,6 +178,7 @@ def get_vector_store():
     return _vector_store
 
 def retrieve_chunks(vector_store, question: str, user_id: str, rag_mode: str):
+    # Vector-search the most relevant chunks; the source scope depends on rag_mode.
     # userId is stored as a STRING at ingestion (server stores userId.toString()),
     # so the filter value must be the string form too. user_id shape is validated
     # (24-hex ObjectId) at the API layer before it reaches here.
@@ -243,6 +251,7 @@ def format_chunks(docs, max_chars=MAX_CONTEXT_CHARS) -> str:
     return "\n\n---\n\n".join(parts)
 
 def format_history(messages, max_chars=MAX_HISTORY_CHARS) -> str:
+    # Render recent turns as labelled "Student:/Prompto:" lines within the char budget.
     if not messages:
         return ""
     recent = messages[-10:]
@@ -282,6 +291,8 @@ def _build_rag_request(model_id: str, user_message: str):
 
 
 def run_rag_chain(user_id: str, question: str, rag_mode: str = "hybrid", chat_history=None) -> str:
+    """Assemble the grounded prompt (context + history + question) and run it
+    through the RAG model fallback, returning the first usable answer."""
     if chat_history is None:
         chat_history = []
 

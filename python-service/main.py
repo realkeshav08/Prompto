@@ -1,3 +1,11 @@
+"""
+Prompto AI microservice (FastAPI).
+
+Internal-only API in front of Google Gemini: /chat for conversational replies,
+/rag for Study-AI answers grounded in a user's documents, and /title for short
+conversation titles. Every endpoint is guarded by a shared internal key and runs
+a cascading model fallback, so an exhausted quota degrades instead of erroring.
+"""
 import os
 import re
 import time
@@ -68,6 +76,7 @@ client = genai.Client(
     http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_MS),
 )
 
+# App instance; the interactive docs/schema routes exist only when ENABLE_DOCS is on.
 app = FastAPI(
     title="Prompto AI Service",
     version="1.1.0",
@@ -76,6 +85,7 @@ app = FastAPI(
     openapi_url="/openapi.json" if ENABLE_DOCS else None,
 )
 
+# Browser CORS is opt-in — mounted only when origins are explicitly configured.
 if ALLOWED_ORIGINS:
     app.add_middleware(
         CORSMiddleware,
@@ -246,6 +256,7 @@ def clean_title(raw: str) -> str:
 # ─── Request / Response models ────────────────────────────────────────────────
 
 class Message(BaseModel):
+    """A single prior turn in the conversation."""
     role: str       # "user" or "assistant"
     content: str
 
@@ -257,6 +268,7 @@ class Message(BaseModel):
         return v[:MAX_MSG_CHARS] if v else v
 
 class ChatRequest(BaseModel):
+    """Incoming /chat payload: the new prompt plus optional prior turns."""
     prompt: str = Field(min_length=1, max_length=MAX_PROMPT_CHARS)
     history: Optional[List[Message]] = []
 
@@ -267,6 +279,7 @@ class ChatRequest(BaseModel):
         return (v or [])[-MAX_HISTORY_MSGS:]
 
 class RagRequest(BaseModel):
+    """Incoming /rag payload: prompt, retrieval scope, tenant id, and history."""
     prompt: str = Field(min_length=1, max_length=MAX_PROMPT_CHARS)
     rag_mode: Literal["notes", "global", "hybrid"] = "hybrid"
     user_id: str = Field(min_length=1, max_length=64)
@@ -287,13 +300,16 @@ class RagRequest(BaseModel):
         return (v or [])[-MAX_HISTORY_MSGS:]
 
 class ChatResponse(BaseModel):
+    """Generated text returned by /chat and /rag."""
     response: str
 
 class TitleRequest(BaseModel):
+    """Incoming /title payload: the user prompt and the (optional) reply to summarize."""
     prompt: str = Field(min_length=1, max_length=MAX_PROMPT_CHARS)
     answer: str = Field(default="", max_length=MAX_PROMPT_CHARS)
 
 class TitleResponse(BaseModel):
+    """Short generated conversation title."""
     title: str
 
 # ─── Shared model-fallback runner ────────────────────────────────────────────
@@ -367,6 +383,7 @@ def _fold_system_into_first_user(contents):
 
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_internal_key)])
 def chat(body: ChatRequest):
+    """Generate a conversational reply, cascading through GEMINI_MODELS on failure."""
     _enforce(_global_limiter, "global")
 
     # Build multi-turn contents with (bounded) conversation history.
@@ -395,6 +412,7 @@ def chat(body: ChatRequest):
 
 @app.post("/rag", response_model=ChatResponse, dependencies=[Depends(require_internal_key)])
 def rag(body: RagRequest):
+    """Answer a Study-AI question grounded in the user's retrieved documents."""
     _enforce(_global_limiter, "global")
     _enforce(_per_user_limiter, body.user_id)
     try:
@@ -414,6 +432,7 @@ def rag(body: RagRequest):
 
 @app.post("/title", response_model=TitleResponse, dependencies=[Depends(require_internal_key)])
 def title(body: TitleRequest):
+    """Produce a short title summarizing the opening exchange (cheap background call)."""
     _enforce(_global_limiter, "global")
 
     convo = f"User: {body.prompt}"
