@@ -12,13 +12,13 @@ export default defineConfig({
     // Turns the app into an installable PWA (Android/iOS "Add to Home Screen").
     // Generates a service worker (offline precache) + web app manifest.
     VitePWA({
-      registerType: 'autoUpdate',   // new deploy → SW updates & reloads automatically
-      injectRegister: 'script',     // external /registerSW.js (works with strict CSP script-src 'self')
+      registerType: 'prompt',       // new deploy → notify user (toast) instead of silent reload
+      injectRegister: null,         // we register manually in main.jsx (virtual:pwa-register)
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Prompto — Your AI Workspace',
+        name: 'Prompto — Your AI Study Partner',
         short_name: 'Prompto',
-        description: 'AI workspace to chat with AI, upload documents, and get instant answers.',
+        description: 'Your AI study partner — upload notes, ask questions, and get clear explanations for any subject.',
         id: '/',
         start_url: '/',
         scope: '/',

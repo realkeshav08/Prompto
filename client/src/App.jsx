@@ -1,11 +1,11 @@
-import React, { useState, useRef, useEffect, Suspense, lazy } from 'react'
-import { Route, Routes, useLocation } from 'react-router-dom'
+import React, { useState, useEffect, Suspense, lazy } from 'react'
+import { Route, Routes } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 
 import Sidebar from './components/Sidebar'
 import ErrorBoundary from './components/ErrorBoundary'
 import ChatBox from './components/ChatBox'
-import Loading from './pages/Loading'
+import Skeleton from './components/Skeleton'
 import Login from './pages/Login'
 
 import { useAppContext } from './context'
@@ -23,60 +23,26 @@ const PaymentReturn = () => {
   const { fetchUser, navigate } = useAppContext()
 
   useEffect(() => {
-    // Refresh credits SILENTLY (no loadingUser toggle → no splash-gate loop),
-    // giving the Stripe webhook a moment to land, then go to the Credits page.
+    // Refresh credits SILENTLY, giving the Stripe webhook a moment to land,
+    // then go to the Credits page.
     const refresh = setTimeout(() => fetchUser({ silent: true }), 1500)
     const go = setTimeout(() => navigate('/credits'), 3000)
     return () => { clearTimeout(refresh); clearTimeout(go) }
   }, [fetchUser, navigate])
 
-  return <Loading type="nav" />
+  return <Skeleton variant="content" />
 }
 
 const App = () => {
-  const { user, loadingUser, token } = useAppContext()
+  const { user, loadingUser, authed } = useAppContext()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const location = useLocation()
-  const { pathname } = location
 
-  // Splash overlay:
-  //   'welcome' — first visit this browser session (1.5s)
-  //   'reload'  — page refresh (1s)
-  //   'nav'     — in-app section switch (1s)
-  const [splash, setSplash] = useState(() =>
-    sessionStorage.getItem('promptoVisited') ? 'reload' : 'welcome'
-  )
-
-  // Initial page load — time the welcome / reload splash.
-  useEffect(() => {
-    if (splash !== 'welcome' && splash !== 'reload') return
-    // Hold the splash until a stored session finishes resolving, so the
-    // welcome can greet the user by name.
-    if (loadingUser && token) return
-
-    sessionStorage.setItem('promptoVisited', '1')
-    const duration = splash === 'welcome' ? 1500 : 1000
-    const t = setTimeout(() => setSplash(null), duration)
-    return () => clearTimeout(t)
-  }, [splash, loadingUser, token])
-
-  // In-app section switches — brief 1s loading splash.
-  const prevPath = useRef(pathname)
-  useEffect(() => {
-    if (pathname === prevPath.current) return
-    prevPath.current = pathname
-    // Some navigations opt out of the splash (e.g. the out-of-credits redirect).
-    if (location.state?.skipSplash) return
-    // Intentional: a timed splash is an effect-driven UI reaction to navigation.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSplash('nav')
-    const t = setTimeout(() => setSplash(null), 1000)
-    return () => clearTimeout(t)
-  }, [pathname, location.state])
-
-  // Global loading gate
-  if (splash || (loadingUser && token)) {
-    return <Loading type={splash || 'reload'} />
+  // A stored session is still resolving (authed flag set, user not fetched yet):
+  // show the app-shell skeleton instead of a blank screen. If the cookie turns
+  // out to be invalid, the 401 handler flips `authed` off and we fall through to
+  // <Login /> below.
+  if (!user && authed && loadingUser) {
+    return <Skeleton />
   }
 
   return (
@@ -114,7 +80,7 @@ const App = () => {
           </ErrorBoundary>
 
           <main className="flex-1 h-full overflow-hidden">
-            <Suspense fallback={<Loading type="nav" />}>
+            <Suspense fallback={<Skeleton variant="content" />}>
               <Routes>
                 <Route path="/" element={<ChatBox />} />
                 <Route path="/credits" element={<Credits />} />

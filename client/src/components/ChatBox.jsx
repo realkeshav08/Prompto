@@ -24,7 +24,7 @@ const ChatBox = () => {
 
   const [messages, setMessages] = useState([])
   const [prompt, setPrompt] = useState('')
-  const [mode, setMode] = useState('text')
+  const [mode, setMode] = useState('study')
   const [ragMode, setRagMode] = useState('hybrid')
   const [isPublished, setIsPublished] = useState(false)
   const [loadingChatId, setLoadingChatId] = useState(null)
@@ -323,29 +323,29 @@ const ChatBox = () => {
             </div>
 
             <h1 className="text-4xl md:text-6xl font-black tracking-tight text-text mb-6 leading-[1.1]">
-              What will we <span className="text-accent underline decoration-accent/20 underline-offset-8 italic">build</span> today?
+              What do you want to <span className="text-accent underline decoration-accent/20 underline-offset-8 italic">learn</span> today?
             </h1>
 
             <p className="text-lg text-muted/80 max-w-xl font-medium leading-relaxed mb-12">
-              Transform your ideas into reality with Prompto v2.0. Neural-powered architecture, clean code, and creative logic.
+              Upload your notes, ask any question, and get clear explanations — Prompto is your AI study partner for every subject.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full px-4">
               <PromptCard
-                text="Design a clean React utility hook for storage"
-                onClick={() => setPrompt("Write a clean React hook for a debounced locale storage value")}
+                text="Explain a tough concept simply"
+                onClick={() => setPrompt("Explain quantum entanglement in simple terms with an everyday analogy")}
               />
               <PromptCard
-                text="Concept for a glassmorphism landing page"
-                onClick={() => setPrompt("Generate a modern CSS glassmorphism concept for a high-end SaaS landing page")}
+                text="Summarize a topic into key points"
+                onClick={() => setPrompt("Summarize the key causes of World War 1 into concise bullet points")}
               />
               <PromptCard
-                text="Architect a scalable microservices structure"
-                onClick={() => setPrompt("Explain the best practices for architecting a scalable microservices system using Node.js")}
+                text="Quiz me to test my understanding"
+                onClick={() => setPrompt("Ask me 5 quiz questions on basic cell biology, one at a time, and check my answers")}
               />
               <PromptCard
-                text="Refactor complex logic into clean patterns"
-                onClick={() => setPrompt("Show me how to refactor a complex nested conditional logic into a strategy pattern in JS")}
+                text="Build me a study plan"
+                onClick={() => setPrompt("Create a focused 7-day study plan to learn the fundamentals of calculus")}
               />
             </div>
           </div>
@@ -502,9 +502,6 @@ const ChatBox = () => {
             />
           </button>
         </form>
-        <p className="text-[10px] text-center mt-3 text-muted font-bold uppercase tracking-[0.2em] opacity-80">
-          Powered by Prompto v2.0 • Advanced Agentic Reasoning
-        </p>
       </div>
     </div>
   )

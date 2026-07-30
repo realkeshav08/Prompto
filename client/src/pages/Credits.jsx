@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import Loading from './Loading'
+import Skeleton from '../components/Skeleton'
 import { useAppContext } from '../context'
 import toast from 'react-hot-toast'
 import { assets } from '../assets/assets'
@@ -7,14 +7,12 @@ import { assets } from '../assets/assets'
 const Credits = () => {
   const [plans, setPlans] = useState([])
   const [loading, setLoading] = useState(true)
-  const { token, axios, fetchUser } = useAppContext()
+  const { axios, fetchUser } = useAppContext()
 
   const fetchPlans = useCallback(async () => {
     try {
       setLoading(true)
-      const { data } = await axios.get('/api/credit/plan', {
-        headers: { Authorization: token }
-      })
+      const { data } = await axios.get('/api/credit/plan')
       if (data.success) {
         setPlans(data.plans)
       } else {
@@ -25,15 +23,11 @@ const Credits = () => {
     } finally {
       setLoading(false)
     }
-  }, [axios, token])
+  }, [axios])
 
   const purchasePlan = useCallback(async (planId) => {
     try {
-      const { data } = await axios.post(
-        '/api/credit/purchase',
-        { planId },
-        { headers: { Authorization: token } }
-      )
+      const { data } = await axios.post('/api/credit/purchase', { planId })
       if (data.success) {
         window.location.assign(data.url)
       } else {
@@ -42,14 +36,14 @@ const Credits = () => {
     } catch (err) {
       toast.error(err.message)
     }
-  }, [axios, token])
+  }, [axios])
 
   useEffect(() => {
     const t = setTimeout(fetchPlans, 0)
     return () => clearTimeout(t)
   }, [fetchPlans])
 
-  if (loading) return <Loading />
+  if (loading) return <Skeleton variant="content" />
 
   return (
     <div className="

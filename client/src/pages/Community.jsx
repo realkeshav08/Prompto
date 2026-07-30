@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import Loading from './Loading'
+import Skeleton from '../components/Skeleton'
 import { useAppContext } from '../context'
 import toast from 'react-hot-toast'
 import { assets } from '../assets/assets'
@@ -93,7 +93,7 @@ const Community = () => {
           Visual <span className="text-gradient">Showcase</span>
         </h1>
         <p className="text-lg text-muted/80 max-w-2xl font-semibold leading-relaxed">
-          A curated collection of neural concepts engineered by our global community. Discover, learn, and draw inspiration.
+          A curated gallery of creations shared by the Prompto community. Discover, learn, and draw inspiration.
         </p>
       </div>
 
@@ -118,7 +118,7 @@ const Community = () => {
       </div>
 
       {loading ? (
-        <Loading />
+        <Skeleton variant="content" />
       ) : images.length > 0 ? (
         <div className="
           grid gap-8
