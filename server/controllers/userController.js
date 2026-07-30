@@ -51,6 +51,12 @@ const hashOtp = (otp) => crypto.createHash('sha256').update(String(otp)).digest(
 // How many wrong code entries before the current recovery code is burned.
 const MAX_OTP_ATTEMPTS = 5;
 
+// Shown whenever a one-time code could not be delivered. Every flow that depends
+// on a code returns this same message so a mail outage looks identical for a
+// registered and an unregistered address.
+const MAIL_UNAVAILABLE =
+  "We couldn't send that email right now. Please try again in a few minutes.";
+
 // Signup verification codes live longer than reset codes — onboarding isn't
 // always immediate.
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -104,7 +110,14 @@ export const registerUser = async (req, res) => {
     // by email, not in the HTTP response.
     const existingUser = await User.findOne({ email: emailNorm });
     if (existingUser && existingUser.isVerified !== false) {
-      await sendAccountExistsEmail(existingUser.email);
+      // Report a delivery failure here too, even though this mail is only a
+      // courtesy. If this branch still answered 200 while the new-signup branch
+      // below reported 503, the difference would itself reveal whether the
+      // address is registered — the exact leak genericResponse exists to close.
+      const notified = await sendAccountExistsEmail(existingUser.email);
+      if (!notified) {
+        return res.status(503).json({ success: false, message: MAIL_UNAVAILABLE });
+      }
       return res.status(200).json(genericResponse);
     }
     // A stale UNVERIFIED user left over from the old create-then-verify flow —
@@ -133,7 +146,14 @@ export const registerUser = async (req, res) => {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    await sendVerificationEmail(emailNorm, code);
+    // The code only exists in the email, so a failed send leaves a pending row
+    // the user can never verify. Drop it and say so, rather than showing "check
+    // your inbox" for a message that was never delivered.
+    const sent = await sendVerificationEmail(emailNorm, code);
+    if (!sent) {
+      await PendingUser.deleteOne({ email: emailNorm });
+      return res.status(503).json({ success: false, message: MAIL_UNAVAILABLE });
+    }
     return res.status(200).json(genericResponse);
 
   } catch (err) {
@@ -417,7 +437,12 @@ export const resendVerification = async (req, res) => {
     pending.expiresAt = new Date(Date.now() + VERIFICATION_TTL_MS);
     await pending.save();
 
-    await sendVerificationEmail(email, code);
+    // Same reasoning as register: a code the user never receives is worse than
+    // an explicit failure, since the stored hash has already been rotated.
+    const sent = await sendVerificationEmail(email, code);
+    if (!sent) {
+      return res.status(503).json({ success: false, message: MAIL_UNAVAILABLE });
+    }
     return res.status(200).json(generic);
   } catch (err) {
     console.error('Resend verification error:', err.message);
