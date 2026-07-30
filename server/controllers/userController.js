@@ -1,10 +1,11 @@
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 import User from '../models/User.js';
+import PendingUser from '../models/PendingUser.js';
 import Chat from '../models/Chat.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { sendRecoveryEmail, sendVerificationEmail } from '../utils/email.js';
+import { sendRecoveryEmail, sendVerificationEmail, sendAccountExistsEmail } from '../utils/email.js';
 
 /* ---------------- JWT ---------------- */
 
@@ -19,6 +20,30 @@ if (!JWT_SECRET) {
 const generateToken = (user) =>
   jwt.sign({ id: user._id, tokenVersion: user.tokenVersion ?? 0 }, JWT_SECRET, { expiresIn: '30d' });
 
+/* ---------------- AUTH COOKIE ----------------
+   The JWT is delivered as an httpOnly cookie so browser JavaScript can never
+   read it — this closes the XSS token-theft risk of localStorage.
+   Frontend (prompto.keshavkashyap.me) and API (prompto-api.keshavkashyap.me)
+   share the registrable domain keshavkashyap.me, so SameSite=Lax is treated as
+   a first-party cookie and is sent on cross-subdomain requests — working on
+   desktop, mobile browsers, and iOS Safari/PWA (which block only third-party
+   cookies). Secure is enabled only in production (dev runs on http://localhost). */
+const isProd = process.env.NODE_ENV === 'production';
+
+const AUTH_COOKIE = 'token';
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: isProd,
+  sameSite: 'lax',
+  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days — matches the JWT expiry
+  path: '/',
+};
+
+const sendAuthCookie = (res, token) => res.cookie(AUTH_COOKIE, token, COOKIE_OPTIONS);
+// clearCookie must match the original attributes (minus maxAge) to delete it.
+const clearAuthCookie = (res) =>
+  res.clearCookie(AUTH_COOKIE, { httpOnly: true, secure: isProd, sameSite: 'lax', path: '/' });
+
 // Recovery codes are stored only as a hash. Hash the candidate the same way to
 // compare on verify/reset, so the plaintext code lives only in the user's inbox.
 const hashOtp = (otp) => crypto.createHash('sha256').update(String(otp)).digest('hex');
@@ -30,16 +55,12 @@ const MAX_OTP_ATTEMPTS = 5;
 // always immediate.
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// Issues (or re-issues) a signup verification code on a user doc and emails it.
-// Returns whether the email was dispatched. Caller is responsible for saving.
-const issueVerificationCode = async (user) => {
-  const code = crypto.randomInt(100000, 1000000).toString();
-  user.verificationToken = hashOtp(code);
-  user.verificationExpire = Date.now() + VERIFICATION_TTL_MS;
-  user.verificationAttempts = 0;
-  await user.save();
-  return sendVerificationEmail(user.email, code);
-};
+// Password policy shared by register / change / reset: at least 8 characters
+// with an uppercase letter, a lowercase letter, a number, and a special char.
+const STRONG_PASSWORD = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+const PASSWORD_REQUIREMENTS =
+  'Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character.';
+const isStrongPassword = (pw) => typeof pw === 'string' && STRONG_PASSWORD.test(pw);
 
 /* ---------------- REGISTER ---------------- */
 
@@ -61,33 +82,59 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    if (password.length < 6) {
+    if (!isStrongPassword(password)) {
       return res.status(400).json({
         success: false,
-        message: 'Password must be at least 6 characters',
+        message: PASSWORD_REQUIREMENTS,
       });
     }
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        message: 'User already exists',
-      });
-    }
+    const emailNorm = email.trim().toLowerCase();
 
-    const user = await User.create({ name, email, password, isVerified: false });
-
-    // Email a verification code instead of logging the user straight in — the
-    // account stays inactive until they confirm ownership of the address.
-    await issueVerificationCode(user);
-
-    return res.status(201).json({
+    // Enumeration-safe: the browser gets the SAME generic reply whether or not
+    // the email already exists. What differs is only which email we send.
+    const genericResponse = {
       success: true,
       needsVerification: true,
-      email: user.email,
-      message: 'Account created. Check your email for a verification code.',
-    });
+      email: emailNorm,
+      message: 'If that email can be registered, a verification code has been sent to it.',
+    };
+
+    // A real (verified / grandfathered) account already exists → tell the owner
+    // by email, not in the HTTP response.
+    const existingUser = await User.findOne({ email: emailNorm });
+    if (existingUser && existingUser.isVerified !== false) {
+      await sendAccountExistsEmail(existingUser.email);
+      return res.status(200).json(genericResponse);
+    }
+    // A stale UNVERIFIED user left over from the old create-then-verify flow —
+    // drop it so the fresh pending signup below is the single source of truth.
+    if (existingUser) {
+      await User.deleteOne({ _id: existingUser._id });
+    }
+
+    // Nothing lands in `users` yet — stage the signup in `pendingusers` and email
+    // a code. The real account is only created once the code is verified. Password
+    // is hashed here so plaintext is never stored, even in the staging collection.
+    const passwordHash = await bcrypt.hash(password, 10);
+    const code = crypto.randomInt(100000, 1000000).toString();
+
+    // Upsert so re-registering the same email just refreshes the pending entry.
+    await PendingUser.findOneAndUpdate(
+      { email: emailNorm },
+      {
+        name,
+        email: emailNorm,
+        passwordHash,
+        codeHash: hashOtp(code),
+        attempts: 0,
+        expiresAt: new Date(Date.now() + VERIFICATION_TTL_MS),
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    await sendVerificationEmail(emailNorm, code);
+    return res.status(200).json(genericResponse);
 
   } catch (err) {
     console.error('Register error:', err.message);
@@ -99,6 +146,11 @@ export const registerUser = async (req, res) => {
 };
 
 /* ---------------- LOGIN ---------------- */
+
+// Precomputed bcrypt hash used to equalise response timing when the email
+// doesn't exist — so login timing can't be used to enumerate registered
+// accounts (a real compare runs in both the found and not-found paths).
+const DUMMY_HASH = bcrypt.hashSync('prompto-timing-safe-dummy', 10);
 
 export const loginUser = async (req, res) => {
   try {
@@ -113,15 +165,15 @@ export const loginUser = async (req, res) => {
     }
 
     const user = await User.findOne({ email }).select('+password');
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found. Please register first.',
-      });
-    }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
+    // Return the SAME 401 whether the email is unknown or the password is wrong,
+    // so the endpoint can't be used to discover which emails are registered.
+    // Run a bcrypt compare in both cases so response timing doesn't leak it either.
+    const isMatch = user
+      ? await bcrypt.compare(password, user.password)
+      : await bcrypt.compare(password, DUMMY_HASH);
+
+    if (!user || !isMatch) {
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password',
@@ -140,9 +192,11 @@ export const loginUser = async (req, res) => {
       });
     }
 
+    const token = generateToken(user);
+    sendAuthCookie(res, token);
     return res.status(200).json({
       success: true,
-      token: generateToken(user),
+      token, // kept for backward compatibility during the cookie migration
     });
 
   } catch (err) {
@@ -211,10 +265,10 @@ export const changePassword = async (req, res) => {
       });
     }
 
-    if (newPassword.length < 6) {
+    if (!isStrongPassword(newPassword)) {
       return res.status(400).json({
         success: false,
-        message: 'New password must be at least 6 characters',
+        message: PASSWORD_REQUIREMENTS,
       });
     }
 
@@ -235,12 +289,14 @@ export const changePassword = async (req, res) => {
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await user.save();
 
-    // Hand back a fresh token minted at the new version so the current session
-    // (which just authenticated) isn't logged out by its own change.
+    // Hand back a fresh token (as a new cookie) minted at the new version so the
+    // current session isn't logged out by its own change.
+    const token = generateToken(user);
+    sendAuthCookie(res, token);
     return res.status(200).json({
       success: true,
       message: 'Password updated successfully',
-      token: generateToken(user),
+      token,
     });
   } catch (err) {
     console.error('Change password error:', err.message);
@@ -256,6 +312,7 @@ export const changePassword = async (req, res) => {
 export const logout = async (req, res) => {
   try {
     await User.updateOne({ _id: req.user._id }, { $inc: { tokenVersion: 1 } });
+    clearAuthCookie(res);
     return res.status(200).json({ success: true, message: 'Logged out' });
   } catch (err) {
     console.error('Logout error:', err.message);
@@ -264,55 +321,70 @@ export const logout = async (req, res) => {
 };
 
 /* ---------------- VERIFY EMAIL ----------------
-   Confirms the signup code, activates the account, and logs the user in by
-   returning a token. Mirrors the OTP verification hardening: hashed compare,
-   expiry, generic failures, and a wrong-attempt lockout. */
+   Confirms the signup code and CREATES the real account (verified) from the
+   staged pending signup — nothing exists in `users` until this succeeds. Mirrors
+   the OTP hardening: hashed compare, expiry, generic failures, attempt lockout. */
 
 export const verifyEmail = async (req, res) => {
   try {
-    const email = req.body.email?.trim();
+    const email = req.body.email?.trim().toLowerCase();
     const code = req.body.code?.trim();
     if (!email || !code) {
       return res.status(400).json({ success: false, message: 'Email and code are required' });
     }
 
-    const user = await User.findOne({ email })
-      .select('+verificationToken +verificationExpire +verificationAttempts');
+    const pending = await PendingUser.findOne({ email });
 
     const invalid = () =>
       res.status(400).json({ success: false, message: 'Invalid or expired verification code' });
 
-    if (!user) return invalid();
+    // No staged signup for this email ⇒ nothing to confirm.
+    if (!pending) return invalid();
 
-    // Already verified ⇒ idempotent success (just log them in).
-    if (user.isVerified === true || user.isVerified === undefined) {
-      return res.status(200).json({ success: true, token: generateToken(user) });
-    }
-    if (!user.verificationToken || !user.verificationExpire) return invalid();
-    if (user.verificationExpire.getTime() < Date.now()) return invalid();
-
-    if ((user.verificationAttempts ?? 0) >= MAX_OTP_ATTEMPTS) {
-      user.verificationToken = null;
-      user.verificationExpire = null;
-      await user.save();
+    if (pending.expiresAt.getTime() < Date.now()) {
+      await PendingUser.deleteOne({ _id: pending._id });
       return invalid();
     }
 
-    if (hashOtp(code) !== user.verificationToken) {
-      user.verificationAttempts = (user.verificationAttempts ?? 0) + 1;
-      await user.save();
+    if ((pending.attempts ?? 0) >= MAX_OTP_ATTEMPTS) {
+      await PendingUser.deleteOne({ _id: pending._id });
       return invalid();
     }
 
-    user.isVerified = true;
-    user.verificationToken = null;
-    user.verificationExpire = null;
-    user.verificationAttempts = 0;
+    if (hashOtp(code) !== pending.codeHash) {
+      pending.attempts = (pending.attempts ?? 0) + 1;
+      await pending.save();
+      return invalid();
+    }
+
+    // Code valid → NOW create the real, verified account from the staged data.
+    // Guard against a real account having appeared in the meantime.
+    const existing = await User.findOne({ email });
+    if (existing) {
+      await PendingUser.deleteOne({ _id: pending._id });
+      return res.status(409).json({
+        success: false,
+        message: 'This email is already registered. Please log in.',
+      });
+    }
+
+    // Password was already hashed at register time → skip the pre-save re-hash.
+    const user = new User({
+      name: pending.name,
+      email: pending.email,
+      password: pending.passwordHash,
+      isVerified: true,
+    });
+    user.$locals.skipHash = true;
     await user.save();
 
+    await PendingUser.deleteOne({ _id: pending._id });
+
+    const token = generateToken(user);
+    sendAuthCookie(res, token);
     return res.status(200).json({
       success: true,
-      token: generateToken(user),
+      token,
       message: 'Email verified',
     });
   } catch (err) {
@@ -327,7 +399,7 @@ export const verifyEmail = async (req, res) => {
 
 export const resendVerification = async (req, res) => {
   try {
-    const email = req.body.email?.trim();
+    const email = req.body.email?.trim().toLowerCase();
     if (!email) return res.status(400).json({ success: false, message: 'Email is required' });
 
     const generic = {
@@ -335,11 +407,17 @@ export const resendVerification = async (req, res) => {
       message: 'If that account needs verification, a new code has been sent.',
     };
 
-    const user = await User.findOne({ email });
-    // Only re-issue for accounts explicitly awaiting verification.
-    if (!user || user.isVerified !== false) return res.status(200).json(generic);
+    const pending = await PendingUser.findOne({ email });
+    // No staged signup ⇒ respond generically (reveal nothing).
+    if (!pending) return res.status(200).json(generic);
 
-    await issueVerificationCode(user);
+    const code = crypto.randomInt(100000, 1000000).toString();
+    pending.codeHash = hashOtp(code);
+    pending.attempts = 0;
+    pending.expiresAt = new Date(Date.now() + VERIFICATION_TTL_MS);
+    await pending.save();
+
+    await sendVerificationEmail(email, code);
     return res.status(200).json(generic);
   } catch (err) {
     console.error('Resend verification error:', err.message);
@@ -603,8 +681,8 @@ export const resetPassword = async (req, res) => {
     const { newPassword } = req.body;
     if (!email || !otp || !newPassword) return res.status(400).json({ success: false, message: "All fields required" });
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({ success: false, message: "Password must be at least 6 characters" });
+    if (!isStrongPassword(newPassword)) {
+      return res.status(400).json({ success: false, message: PASSWORD_REQUIREMENTS });
     }
 
     const user = await User.findOne({ email })
@@ -639,9 +717,13 @@ export const resetPassword = async (req, res) => {
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await user.save();
 
+    // Log the user straight in after a successful reset (set the auth cookie).
+    const token = generateToken(user);
+    sendAuthCookie(res, token);
     return res.status(200).json({
       success: true,
-      message: "Password updated successfully. You can now login.",
+      token,
+      message: "Password updated successfully",
     });
 
   } catch (err) {

@@ -9,17 +9,21 @@ if (!JWT_SECRET) {
 
 export const protect = async (req, res, next) => {
   try {
+    /* ---- Read token: httpOnly cookie first, then Authorization header ----
+       The cookie is the primary mechanism (safe from XSS). The Bearer header
+       is kept as a fallback so pre-migration sessions and non-browser API
+       clients keep working during the transition. */
     const authHeader = req.headers.authorization;
+    const token =
+      req.cookies?.token ||
+      (authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : null);
 
-    /* ---- Check header ---- */
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!token) {
       return res.status(401).json({
         success: false,
         message: 'Not authorized, token missing',
       });
     }
-
-    const token = authHeader.split(' ')[1];
 
     /* ---- Verify token ---- */
     const decoded = jwt.verify(token, JWT_SECRET);

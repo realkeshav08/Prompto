@@ -101,6 +101,9 @@ const UserSchema = new Schema(
 /* ---------------- PASSWORD HASHING ---------------- */
 
 UserSchema.pre('save', async function () {
+  // A verified pending-signup is turned into a User with an already-hashed
+  // password; skip re-hashing in that case (it would double-hash and break login).
+  if (this.$locals.skipHash) return;
   if (!this.isModified('password')) return;
 
   const salt = await bcrypt.genSalt(10);

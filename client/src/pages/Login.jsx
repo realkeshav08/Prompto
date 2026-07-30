@@ -2,13 +2,18 @@ import React, { useState } from 'react'
 import { useAppContext } from '../context'
 import toast from 'react-hot-toast'
 import { assets } from '../assets/assets'
+import { isStrongPassword, PASSWORD_REQUIREMENTS } from '../utils/password'
+import PasswordChecklist from '../components/PasswordChecklist'
+import PasswordInput from '../components/PasswordInput'
+import OtpInput from '../components/OtpInput'
 
 const Login = () => {
   const [state, setState] = useState('login')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const { axios, setToken } = useAppContext()
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const { axios, setAuthed } = useAppContext()
 
   // Forgot Password States
   const [isForgot, setIsForgot] = useState(false)
@@ -30,6 +35,18 @@ const Login = () => {
     e.preventDefault()
     const url = state === 'login' ? '/api/user/login' : '/api/user/register'
 
+    // Strong-password + match gate on registration only (login just checks creds).
+    if (state === 'register') {
+      if (!isStrongPassword(password)) {
+        toast.error(PASSWORD_REQUIREMENTS)
+        return
+      }
+      if (password !== confirmPassword) {
+        toast.error('Passwords do not match')
+        return
+      }
+    }
+
     try {
       const { data } = await axios.post(url, { name, email, password })
 
@@ -41,8 +58,9 @@ const Login = () => {
       }
 
       if (data.success) {
-        setToken(data.token)
-        localStorage.setItem('token', data.token)
+        // The server set the httpOnly auth cookie on this response; we only
+        // flip the local session flag to trigger bootstrap.
+        setAuthed(true)
       } else {
         toast.error(data.message)
       }
@@ -55,16 +73,6 @@ const Login = () => {
 
       const msg = err.response?.data?.message || err.message
       toast.error(msg)
-
-      // If account not found, switch to register mode automatically
-      if (err.response?.status === 404 && !isForgot) {
-        setTimeout(() => setState('register'), 1000)
-      }
-
-      // If account already exists, switch to login mode automatically
-      if (err.response?.status === 409 && state === 'register') {
-        setTimeout(() => setState('login'), 1000)
-      }
     }
   }
 
@@ -74,8 +82,7 @@ const Login = () => {
       const { data } = await axios.post('/api/user/verify-email', { email, code: verifyCode.trim() })
       if (data.success) {
         toast.success('Email verified — welcome to Prompto!')
-        setToken(data.token)
-        localStorage.setItem('token', data.token)
+        setAuthed(true)
       } else {
         toast.error(data.message)
       }
@@ -115,15 +122,19 @@ const Login = () => {
           setResetStep(3)
         } else toast.error(data.message)
       } else if (resetStep === 3) {
+        if (!isStrongPassword(newPassword)) {
+          toast.error(PASSWORD_REQUIREMENTS)
+          return
+        }
+        if (newPassword !== confirmPassword) {
+          toast.error('Passwords do not match')
+          return
+        }
         const { data } = await axios.post('/api/user/reset-password', { email, otp: otp.trim(), newPassword })
         if (data.success) {
+          // Password reset now logs the user straight in (server set the cookie).
           toast.success(data.message)
-          setIsForgot(false)
-          setResetStep(1)
-          setOtp('')
-          setNewPassword('')
-          setPassword('')
-          setState('login')
+          setAuthed(true)
         } else toast.error(data.message)
       }
     } catch (err) {
@@ -132,16 +143,13 @@ const Login = () => {
   }
 
   return (
-    <div className="
-      min-h-screen w-full
-      flex items-center justify-center
-      bg-bg relative overflow-hidden
-      text-text px-6
-    ">
-      {/* Dynamic Background Elements */}
-      <div className="absolute top-[-10%] right-[-10%] w-[600px] h-[600px] bg-accent/10 blur-[130px] rounded-full" />
-      <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-accent/5 blur-[100px] rounded-full" />
+    <div className="h-screen w-full overflow-y-auto overflow-x-hidden bg-bg text-text">
+      {/* Fixed ambient background — stays put and never adds scroll height */}
+      <div className="fixed top-[-10%] right-[-10%] w-[600px] h-[600px] bg-accent/10 blur-[130px] rounded-full pointer-events-none" />
+      <div className="fixed bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-accent/5 blur-[100px] rounded-full pointer-events-none" />
 
+      {/* Centers the card when it fits; the outer div scrolls when it's taller */}
+      <div className="min-h-screen w-full flex items-center justify-center relative z-10 px-6 py-10">
       <form
         onSubmit={isForgot ? handleForgotPassword : verifyMode ? handleVerify : handleSubmit}
         className="
@@ -164,13 +172,13 @@ const Login = () => {
             ) : state === 'login' ? (
               <>Welcome <span className="text-gradient">Back</span></>
             ) : (
-              <>Join the <span className="text-gradient">Future</span></>
+              <>Study <span className="text-gradient">Smarter</span></>
             )}
           </h1>
           <p className="text-muted text-[10px] font-black mt-3 opacity-80 uppercase tracking-widest text-center px-4">
             {verifyMode
               ? 'Enter the code sent to your email'
-              : isForgot ? `Step ${resetStep} of 3` : state === 'login' ? 'Continue your creative journey' : 'Start your neural odyssey today'}
+              : isForgot ? `Step ${resetStep} of 3` : state === 'login' ? 'Pick up where you left off' : 'Your AI study partner awaits'}
           </p>
         </div>
 
@@ -178,23 +186,25 @@ const Login = () => {
         <div className="space-y-5">
           {!isForgot && !verifyMode && state === 'register' && (
             <div className="space-y-2">
-              <label className="block text-[10px] font-black uppercase tracking-widest text-muted ml-1">Full Name</label>
-              <input value={name} onChange={e => setName(e.target.value)} type="text" required placeholder="Enter your name"
+              <label htmlFor="name" className="block text-[10px] font-black uppercase tracking-widest text-muted ml-1">Full Name</label>
+              <input id="name" name="name" autoComplete="name" value={name} onChange={e => setName(e.target.value)} type="text" required placeholder="Enter your name"
                 className="w-full px-5 py-3.5 bg-accent-soft/30 border border-border/50 rounded-2xl text-sm font-medium outline-none focus:border-accent/40 focus:ring-4 focus:ring-accent/5 transition-all" />
             </div>
           )}
 
-          <div className="space-y-2">
-            <label className="block text-[10px] font-black uppercase tracking-widest text-muted ml-1">Email Address</label>
-            <input value={email} onChange={e => setEmail(e.target.value)} type="email" required placeholder="name@example.com" disabled={(isForgot && resetStep > 1) || verifyMode}
-              className="w-full px-5 py-3.5 bg-accent-soft/30 border border-border/50 rounded-2xl text-sm font-medium outline-none focus:border-accent/40 focus:ring-4 focus:ring-accent/5 transition-all disabled:opacity-50" />
-          </div>
+          {/* Email — only on the initial step (login/register, or reset step 1) */}
+          {(!isForgot || resetStep === 1) && !verifyMode && (
+            <div className="space-y-2">
+              <label htmlFor="email" className="block text-[10px] font-black uppercase tracking-widest text-muted ml-1">Email Address</label>
+              <input id="email" name="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} type="email" required placeholder="name@example.com"
+                className="w-full px-5 py-3.5 bg-accent-soft/30 border border-border/50 rounded-2xl text-sm font-medium outline-none focus:border-accent/40 focus:ring-4 focus:ring-accent/5 transition-all" />
+            </div>
+          )}
 
           {verifyMode && (
             <div className="space-y-2 animate-slide-up">
-              <label className="block text-[10px] font-black uppercase tracking-widest text-muted ml-1">Verification Code</label>
-              <input value={verifyCode} onChange={e => setVerifyCode(e.target.value.replace(/\s/g, ''))} type="text" inputMode="numeric" required placeholder="Enter 6-digit code"
-                className="w-full px-5 py-3.5 bg-accent-soft/30 border border-border/50 rounded-2xl text-sm font-medium outline-none focus:border-accent/40 focus:ring-4 focus:ring-accent/5 transition-all" />
+              <span className="block text-[10px] font-black uppercase tracking-widest text-muted ml-1">Verification Code</span>
+              <OtpInput value={verifyCode} onChange={setVerifyCode} autoFocus />
               <p className="text-[10px] text-muted ml-1">
                 Didn't get it?{' '}
                 <span onClick={handleResendVerification} className="text-accent font-bold cursor-pointer hover:underline">Resend code</span>
@@ -202,18 +212,21 @@ const Login = () => {
             </div>
           )}
 
-          {isForgot && resetStep >= 2 && (
+          {isForgot && resetStep === 2 && (
             <div className="space-y-2 animate-slide-up">
-              <label className="block text-[10px] font-black uppercase tracking-widest text-muted ml-1">Recovery Code</label>
-              <input value={otp} onChange={e => setOtp(e.target.value.replace(/\s/g, ''))} type="text" inputMode="numeric" required placeholder="Enter 6-digit code" disabled={resetStep > 2}
-                className="w-full px-5 py-3.5 bg-accent-soft/30 border border-border/50 rounded-2xl text-sm font-medium outline-none focus:border-accent/40 focus:ring-4 focus:ring-accent/5 transition-all disabled:opacity-50" />
+              <span className="block text-[10px] font-black uppercase tracking-widest text-muted ml-1">Recovery Code</span>
+              <OtpInput value={otp} onChange={setOtp} autoFocus />
             </div>
           )}
 
           {isForgot && resetStep === 3 && (
             <div className="space-y-2 animate-slide-up">
-              <label className="block text-[10px] font-black uppercase tracking-widest text-muted ml-1">New Password</label>
-              <input value={newPassword} onChange={e => setNewPassword(e.target.value)} type="password" required placeholder="Min 6 characters"
+              <label htmlFor="newPassword" className="block text-[10px] font-black uppercase tracking-widest text-muted ml-1">New Password</label>
+              <PasswordInput id="newPassword" name="newPassword" autoComplete="new-password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required placeholder="Enter new password"
+                className="w-full px-5 py-3.5 bg-accent-soft/30 border border-border/50 rounded-2xl text-sm font-medium outline-none focus:border-accent/40 focus:ring-4 focus:ring-accent/5 transition-all" />
+              {newPassword && <PasswordChecklist value={newPassword} />}
+              <label htmlFor="confirmNewPassword" className="block text-[10px] font-black uppercase tracking-widest text-muted ml-1">Confirm Password</label>
+              <PasswordInput id="confirmNewPassword" name="confirmNewPassword" autoComplete="new-password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required placeholder="Re-enter new password"
                 className="w-full px-5 py-3.5 bg-accent-soft/30 border border-border/50 rounded-2xl text-sm font-medium outline-none focus:border-accent/40 focus:ring-4 focus:ring-accent/5 transition-all" />
             </div>
           )}
@@ -221,12 +234,21 @@ const Login = () => {
           {!isForgot && !verifyMode && (
             <div className="space-y-2">
               <div className="flex justify-between items-center px-1">
-                <label className="block text-[10px] font-black uppercase tracking-widest text-muted">Secret Password</label>
+                <label htmlFor="password" className="block text-[10px] font-black uppercase tracking-widest text-muted">Secret Password</label>
                 {state === 'login' && (
-                  <span onClick={() => { setIsForgot(true); setResetStep(1); setOtp(''); setNewPassword(''); setPassword(''); }} className="text-[10px] font-bold text-accent cursor-pointer hover:underline">Forgot?</span>
+                  <span onClick={() => { setIsForgot(true); setResetStep(1); setOtp(''); setNewPassword(''); setPassword(''); setConfirmPassword(''); }} className="text-[10px] font-bold text-accent cursor-pointer hover:underline">Forgot?</span>
                 )}
               </div>
-              <input value={password} onChange={e => setPassword(e.target.value)} type="password" required placeholder="••••••••"
+              <PasswordInput id="password" name="password" autoComplete={state === 'login' ? 'current-password' : 'new-password'} value={password} onChange={e => setPassword(e.target.value)} required placeholder="Enter your password"
+                className="w-full px-5 py-3.5 bg-accent-soft/30 border border-border/50 rounded-2xl text-sm font-medium outline-none focus:border-accent/40 focus:ring-4 focus:ring-accent/5 transition-all" />
+            </div>
+          )}
+
+          {!isForgot && !verifyMode && state === 'register' && (
+            <div className="space-y-2">
+              {password && <PasswordChecklist value={password} />}
+              <label htmlFor="confirmPassword" className="block text-[10px] font-black uppercase tracking-widest text-muted ml-1">Confirm Password</label>
+              <PasswordInput id="confirmPassword" name="confirmPassword" autoComplete="new-password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required placeholder="Re-enter password"
                 className="w-full px-5 py-3.5 bg-accent-soft/30 border border-border/50 rounded-2xl text-sm font-medium outline-none focus:border-accent/40 focus:ring-4 focus:ring-accent/5 transition-all" />
             </div>
           )}
@@ -242,7 +264,7 @@ const Login = () => {
         ) : !isForgot ? (
           <p className="text-[10px] text-muted mt-8 mb-6 text-center font-bold uppercase tracking-wider">
             {state === 'register' ? 'Already part of the community? ' : 'New to the platform? '}
-            <span onClick={() => setState(state === 'login' ? 'register' : 'login')}
+            <span onClick={() => { setState(state === 'login' ? 'register' : 'login'); setConfirmPassword(''); }}
               className="text-accent font-black cursor-pointer hover:underline underline-offset-4 decoration-2">
               {state === 'register' ? 'Sign in' : 'Create account'}
             </span>
@@ -250,7 +272,7 @@ const Login = () => {
         ) : (
           <p className="text-[10px] text-muted mt-8 mb-6 text-center font-bold uppercase tracking-wider">
             Remembered your password? 
-            <span onClick={() => { setIsForgot(false); setResetStep(1); setOtp(''); setNewPassword(''); }}
+            <span onClick={() => { setIsForgot(false); setResetStep(1); setOtp(''); setNewPassword(''); setConfirmPassword(''); }}
               className="text-accent font-black cursor-pointer hover:underline underline-offset-4 decoration-2"> Back to Login</span>
           </p>
         )}
@@ -267,11 +289,7 @@ const Login = () => {
               : (state === 'register' ? 'Establish Account' : 'Authenticate')}
         </button>
       </form>
-
-      {/* Footer Branding */}
-      <p className="absolute bottom-8 text-[10px] font-black text-muted uppercase tracking-[0.3em] opacity-70">
-        Prompto Intelligence Systems • v2.0
-      </p>
+      </div>
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import express from 'express';
 import 'dotenv/config';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
@@ -89,6 +90,8 @@ app.use(compression());
 // to limit memory pressure and payload-based abuse.
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// Parses the httpOnly auth cookie into req.cookies (see middlewares/auth.js).
+app.use(cookieParser());
 
 /* ---------------- RATE LIMITING ---------------- */
 

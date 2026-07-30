@@ -34,9 +34,15 @@ export const AppContextProvider = ({ children }) => {
     localStorage.getItem('theme') || 'dark'
   )
 
-  const [token, setToken] = useState(
-    localStorage.getItem('token')
-  )
+  // The JWT is no longer kept in JS — it lives in an httpOnly cookie sent
+  // automatically via withCredentials. This flag only remembers "this browser
+  // has an active session" so we know whether to bootstrap / show the splash.
+  const [authed, setAuthedState] = useState(() => localStorage.getItem('authed') === '1')
+  const setAuthed = useCallback((val) => {
+    setAuthedState(!!val)
+    if (val) localStorage.setItem('authed', '1')
+    else localStorage.removeItem('authed')
+  }, [])
 
   const [loadingUser, setLoadingUser] = useState(true)
   const [loadingChats, setLoadingChats] = useState(false)
@@ -44,24 +50,15 @@ export const AppContextProvider = ({ children }) => {
   /* ---------------- AXIOS INTERCEPTORS ---------------- */
 
   useEffect(() => {
-    // Request Interceptor
-    const reqInterceptor = api.interceptors.request.use(config => {
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`
-      } else {
-        delete config.headers.Authorization
-      }
-      return config
-    })
-
-    // Response Interceptor
+    // Auth travels in the httpOnly cookie (withCredentials), so there is no
+    // request interceptor adding a Bearer header anymore. We only watch
+    // responses to react to an expired/invalid session.
     const resInterceptor = api.interceptors.response.use(
       response => response,
       error => {
         if (error.response?.status === 401) {
           logger.warn("🚫 Session expired or invalid");
-          setToken(null)
-          localStorage.removeItem('token')
+          setAuthed(false)
           setUser(null)
         }
         return Promise.reject(error)
@@ -69,10 +66,9 @@ export const AppContextProvider = ({ children }) => {
     )
 
     return () => {
-      api.interceptors.request.eject(reqInterceptor)
       api.interceptors.response.eject(resInterceptor)
     }
-  }, [token])
+  }, [setAuthed])
 
   /* ---------------- USER ---------------- */
 
@@ -201,19 +197,19 @@ export const AppContextProvider = ({ children }) => {
   /* ---------------- BOOTSTRAP ---------------- */
 
   useEffect(() => {
-    if (token) {
-      logger.log("🔐 Token detected, bootstrapping...");
-      // Intentional: kick off the auth bootstrap loader on mount / token change.
+    if (authed) {
+      logger.log("🔐 Session flag set, bootstrapping...");
+      // Intentional: kick off the auth bootstrap loader on mount.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchUser();
     } else {
-      logger.log("🚫 No token, reset state");
+      logger.log("🚫 Not authed, reset state");
       setUser(null);
       setChats([]);
       setSelectedChat(null);
       setLoadingUser(false);
     }
-  }, [token, fetchUser]);
+  }, [authed, fetchUser]);
 
   useEffect(() => {
     if (user) {
@@ -320,7 +316,7 @@ export const AppContextProvider = ({ children }) => {
      that has any messages — including one whose first message landed in the
      same browser via another tab.                                            */
   useEffect(() => {
-    if (!token) return;
+    if (!authed) return;
     const handler = () => {
       const chatId = selectedChat?._id;
       if (!chatId) return;
@@ -328,13 +324,14 @@ export const AppContextProvider = ({ children }) => {
       if (!chat) return;
       if (chat.messages && chat.messages.length > 0) return;
       try {
+        // credentials:'include' sends the httpOnly auth cookie with the
+        // keepalive request (the header-based token is gone).
         fetch(`${import.meta.env.VITE_SERVER_URL}/api/chat/delete`, {
           method: 'POST',
           keepalive: true,
           credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ chatId, onlyIfEmpty: true }),
         });
@@ -342,7 +339,7 @@ export const AppContextProvider = ({ children }) => {
     };
     window.addEventListener('pagehide', handler);
     return () => window.removeEventListener('pagehide', handler);
-  }, [selectedChat, chats, token]);
+  }, [selectedChat, chats, authed]);
 
   /* ---------------- CONTEXT VALUE ---------------- */
 
@@ -356,8 +353,8 @@ export const AppContextProvider = ({ children }) => {
     setSelectedChat,
     theme,
     setTheme,
-    token,
-    setToken,
+    authed,
+    setAuthed,
     loadingUser,
     loadingChats,
     fetchUser,
@@ -372,7 +369,8 @@ export const AppContextProvider = ({ children }) => {
     chats,
     selectedChat,
     theme,
-    token,
+    authed,
+    setAuthed,
     loadingUser,
     loadingChats,
     fetchUser,

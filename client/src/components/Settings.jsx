@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { useAppContext } from '../context'
 import toast from 'react-hot-toast'
+import { isStrongPassword, PASSWORD_REQUIREMENTS } from '../utils/password'
+import PasswordChecklist from './PasswordChecklist'
+import PasswordInput from './PasswordInput'
 
 const LEGAL_UPDATED = 'May 17, 2026'
 
@@ -58,7 +61,7 @@ const LegalView = ({ title, sections }) => (
 )
 
 const Settings = ({ isOpen, onClose }) => {
-  const { user, setUser, theme, setTheme, axios, navigate, setToken } = useAppContext()
+  const { user, setUser, theme, setTheme, axios, navigate, setAuthed } = useAppContext()
 
   const [tab, setTab] = useState('profile')
   const [name, setName] = useState('')
@@ -109,7 +112,7 @@ const Settings = ({ isOpen, onClose }) => {
 
   const submitPassword = async () => {
     if (!curPw || !newPw) return toast.error('Fill in all password fields')
-    if (newPw.length < 6) return toast.error('New password must be at least 6 characters')
+    if (!isStrongPassword(newPw)) return toast.error(PASSWORD_REQUIREMENTS)
     if (newPw !== confirmPw) return toast.error('New passwords do not match')
     setChangingPw(true)
     try {
@@ -119,12 +122,8 @@ const Settings = ({ isOpen, onClose }) => {
       })
       if (data.success) {
         // The server rotates tokenVersion on a password change (logging out
-        // other sessions), so adopt the freshly minted token it returns to
-        // keep THIS session authenticated.
-        if (data.token) {
-          localStorage.setItem('token', data.token)
-          setToken(data.token)
-        }
+        // other sessions) and sets a fresh httpOnly cookie on this response, so
+        // THIS session stays authenticated without any client token handling.
         toast.success('Password changed')
         setCurPw(''); setNewPw(''); setConfirmPw('')
       } else toast.error(data.message)
@@ -139,8 +138,9 @@ const Settings = ({ isOpen, onClose }) => {
     // Revoke server-side (bumps tokenVersion so the token can't be reused),
     // then clear locally. Best-effort: a failed call still logs out this device.
     try { await axios.post('/api/user/logout') } catch { /* ignore */ }
-    localStorage.removeItem('token')
-    setToken(null)
+    // Server cleared the auth cookie; drop the local session flag + user state.
+    setAuthed(false)
+    setUser(null)
     onClose()
     toast.success('Logged out')
   }
@@ -230,9 +230,10 @@ const Settings = ({ isOpen, onClose }) => {
               {/* Change password */}
               <div className="space-y-2 pt-2 border-t border-border/40">
                 <label className="block text-[10px] font-black uppercase tracking-widest text-muted pt-2">Change Password</label>
-                <input type="password" placeholder="Current password" value={curPw} onChange={e => setCurPw(e.target.value)} className={fieldClass} />
-                <input type="password" placeholder="New password (min 6 chars)" value={newPw} onChange={e => setNewPw(e.target.value)} className={fieldClass} />
-                <input type="password" placeholder="Confirm new password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} className={fieldClass} />
+                <PasswordInput placeholder="Enter current password" value={curPw} onChange={e => setCurPw(e.target.value)} className={fieldClass} />
+                <PasswordInput placeholder="Enter new password" value={newPw} onChange={e => setNewPw(e.target.value)} className={fieldClass} />
+                {newPw && <PasswordChecklist value={newPw} />}
+                <PasswordInput placeholder="Re-enter new password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} className={fieldClass} />
                 <button
                   onClick={submitPassword}
                   disabled={changingPw}

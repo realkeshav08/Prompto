@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 const TYPE_ICON = { pdf: '📄', txt: '📝', docx: '📋', url: '🌐', image: '🖼️' }
 
 const DocumentUpload = ({ isOpen, onClose }) => {
-  const { axios, token, user } = useAppContext()
+  const { axios, user } = useAppContext()
   const fileRef = useRef(null)
 
   const [docs, setDocs] = useState([])
@@ -18,14 +18,12 @@ const DocumentUpload = ({ isOpen, onClose }) => {
   // dependency — avoids the "used before declaration" immutability error.
   const fetchDocs = useCallback(async () => {
     try {
-      const { data } = await axios.get('/api/document/list', {
-        headers: { Authorization: token },
-      })
+      const { data } = await axios.get('/api/document/list')
       if (data.success) setDocs(data.documents)
     } catch {
       // silent
     }
-  }, [axios, token])
+  }, [axios])
 
   useEffect(() => {
     // Intentional: refresh the document list whenever the panel opens.
@@ -41,7 +39,7 @@ const DocumentUpload = ({ isOpen, onClose }) => {
       form.append('file', file)
       form.append('isGlobal', String(isGlobal))
       const { data } = await axios.post('/api/document/upload', form, {
-        headers: { Authorization: token, 'Content-Type': 'multipart/form-data' },
+        headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 180000, // OCR + embedding of a large document can run long
       })
       if (data.success) {
@@ -65,7 +63,7 @@ const DocumentUpload = ({ isOpen, onClose }) => {
       const { data } = await axios.post(
         '/api/document/upload',
         { url: url.trim(), isGlobal },
-        { headers: { Authorization: token }, timeout: 180000 }
+        { timeout: 180000 }
       )
       if (data.success) {
         toast.success(data.message)
@@ -84,9 +82,7 @@ const DocumentUpload = ({ isOpen, onClose }) => {
   const handleDelete = async (id) => {
     setDeleting(id)
     try {
-      const { data } = await axios.delete(`/api/document/${id}`, {
-        headers: { Authorization: token },
-      })
+      const { data } = await axios.delete(`/api/document/${id}`)
       if (data.success) {
         toast.success('Document removed')
         setDocs(prev => prev.filter(d => d._id !== id))

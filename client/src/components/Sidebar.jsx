@@ -42,7 +42,6 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
     createNewChat,
     axios,
     setChats,
-    token,
     fetchUsersChats,
     loadMoreChats,
     chatsCursor
@@ -59,11 +58,7 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
       e.stopPropagation()
       if (!window.confirm('Delete this chat?')) return
 
-      const { data } = await axios.post(
-        '/api/chat/delete',
-        { chatId },
-        { headers: { Authorization: token } }
-      )
+      const { data } = await axios.post('/api/chat/delete', { chatId })
 
       if (data.success) {
         setChats(prev => {
@@ -110,9 +105,17 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
 
   return (
     <>
+      {/* Mobile backdrop: dims the page and closes the drawer on tap (mobile only) */}
+      {isMenuOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/50 z-40"
+          onClick={() => setIsMenuOpen(false)}
+          aria-hidden="true"
+        />
+      )}
       <aside
         className={`
-          h-screen w-80 flex flex-col
+          h-screen w-80 max-w-[85vw] flex flex-col
           glass border-r
           px-6 py-8
           transition-all duration-500 ease-in-out
@@ -158,6 +161,9 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
           ">
             <img src={assets.search_icon} className="w-3.5 dark:invert opacity-60" />
             <input
+              id="sidebar-search"
+              name="search"
+              aria-label="Search chat history"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search history"
