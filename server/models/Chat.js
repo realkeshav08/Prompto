@@ -14,8 +14,13 @@ const MessageSchema = new Schema(
 
     content: {
       type: String,
-      required: true,
+      // A "stopped" assistant placeholder is intentionally saved with empty
+      // content (the UI shows "⏹ Stopped"). Mongoose treats '' as missing for a
+      // required String, so require content only for non-stopped messages —
+      // otherwise a failed/empty AI reply crashes the save with a 500.
+      required: function () { return !this.stopped; },
       trim: true,
+      default: '',
     },
 
     isImage: {
