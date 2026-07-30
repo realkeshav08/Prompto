@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useAppContext } from '../context'
 import toast from 'react-hot-toast'
 import { assets } from '../assets/assets'
@@ -25,6 +25,30 @@ const Login = () => {
   const [verifyMode, setVerifyMode] = useState(false)
   const [verifyCode, setVerifyCode] = useState('')
 
+  // In-flight request. Drives the button's pending label and blocks a second
+  // submit — without it, a slow network looks like a dead button and invites
+  // repeat clicks (each one spending a rate-limit slot, or re-sending a code).
+  const [submitting, setSubmitting] = useState(false)
+
+  const formRef = useRef(null)
+
+  /* A 6-digit code has exactly one sensible next action, so submit it as soon
+     as the last digit lands instead of asking for a click. requestSubmit() goes
+     through the form's normal onSubmit, so the manual button and this path stay
+     one code path. The last auto-sent code is remembered so a rejected code
+     doesn't resubmit itself in a loop — re-entering a digit arms it again. */
+  const autoSentCode = useRef('')
+  const pendingCode = verifyMode ? verifyCode : isForgot && resetStep === 2 ? otp : ''
+
+  useEffect(() => {
+    // Cleared field ⇒ a new step, or the user is retyping: arm it again.
+    if (pendingCode.length === 0) autoSentCode.current = ''
+    if (pendingCode.length !== 6 || submitting) return
+    if (autoSentCode.current === pendingCode) return
+    autoSentCode.current = pendingCode
+    formRef.current?.requestSubmit()
+  }, [pendingCode, submitting])
+
   const enterVerify = (msg) => {
     setVerifyMode(true)
     setVerifyCode('')
@@ -47,6 +71,8 @@ const Login = () => {
       }
     }
 
+    if (submitting) return
+    setSubmitting(true)
     try {
       const { data } = await axios.post(url, { name, email, password })
 
@@ -73,11 +99,15 @@ const Login = () => {
 
       const msg = err.response?.data?.message || err.message
       toast.error(msg)
+    } finally {
+      setSubmitting(false)
     }
   }
 
   const handleVerify = async (e) => {
     e.preventDefault()
+    if (submitting) return
+    setSubmitting(true)
     try {
       const { data } = await axios.post('/api/user/verify-email', { email, code: verifyCode.trim() })
       if (data.success) {
@@ -88,6 +118,8 @@ const Login = () => {
       }
     } catch (err) {
       toast.error(err.response?.data?.message || err.message)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -108,6 +140,8 @@ const Login = () => {
 
   const handleForgotPassword = async (e) => {
     e.preventDefault()
+    if (submitting) return
+    setSubmitting(true)
     try {
       if (resetStep === 1) {
         const { data } = await axios.post('/api/user/forgot-password', { email })
@@ -139,6 +173,8 @@ const Login = () => {
       }
     } catch (err) {
       toast.error(err.response?.data?.message || err.message)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -151,6 +187,7 @@ const Login = () => {
       {/* Centers the card when it fits; the outer div scrolls when it's taller */}
       <div className="min-h-screen w-full flex items-center justify-center relative z-10 px-6 py-10">
       <form
+        ref={formRef}
         onSubmit={isForgot ? handleForgotPassword : verifyMode ? handleVerify : handleSubmit}
         className="
           w-full max-w-[420px]
@@ -277,16 +314,25 @@ const Login = () => {
           </p>
         )}
 
-        {/* Action Button */}
+        {/* Action Button — the pending label names the step in progress, so a
+            slow request reads as "still working" rather than "nothing happened". */}
         <button
           type="submit"
-          className="w-full py-4 text-sm font-black uppercase tracking-widest rounded-2xl bg-accent text-white shadow-lg hover:shadow-accent/40 hover:scale-[1.02] active:scale-95 transition-all duration-300"
+          disabled={submitting}
+          aria-busy={submitting}
+          className="w-full py-4 text-sm font-black uppercase tracking-widest rounded-2xl bg-accent text-white shadow-lg transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed enabled:hover:shadow-accent/40 enabled:hover:scale-[1.02] enabled:active:scale-95"
         >
-          {verifyMode
-            ? 'Verify Email'
-            : isForgot
-              ? (resetStep === 1 ? 'Send Code' : resetStep === 2 ? 'Verify Code' : 'Update Password')
-              : (state === 'register' ? 'Establish Account' : 'Authenticate')}
+          {submitting
+            ? (verifyMode
+              ? 'Verifying…'
+              : isForgot
+                ? (resetStep === 1 ? 'Sending…' : resetStep === 2 ? 'Verifying…' : 'Updating…')
+                : (state === 'register' ? 'Creating account…' : 'Signing in…'))
+            : (verifyMode
+              ? 'Verify Email'
+              : isForgot
+                ? (resetStep === 1 ? 'Send Code' : resetStep === 2 ? 'Verify Code' : 'Update Password')
+                : (state === 'register' ? 'Establish Account' : 'Authenticate'))}
         </button>
       </form>
       </div>
