@@ -69,11 +69,12 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('CORS not allowed'));
-      }
+      // Signal "not allowed" by withholding the header rather than raising:
+      // an Error here propagates to the error handler, so a routine
+      // cross-origin probe answers 500 and is logged (and reported to Sentry)
+      // as an unhandled fault. Omitting the header is what actually blocks the
+      // caller — the browser enforces it — and keeps the noise out of the logs.
+      callback(null, !origin || allowedOrigins.includes(origin));
     },
     credentials: true,
   })
