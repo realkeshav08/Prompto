@@ -34,9 +34,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Fail the build on any high (or worse) severity vulnerability.
+      # Fails on any high/critical advisory that isn't explicitly allowlisted in
+      # the script, with a reason and a review date. Plain `npm audit` can't
+      # distinguish an advisory that is unreachable in this app from a real one,
+      # and lowering the whole gate to get past one would hide the next real one.
       - name: Security audit
-        run: npm audit --audit-level=high
+        run: node scripts/audit-check.mjs
 
       - name: Lint
         run: npm run lint
