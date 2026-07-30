@@ -43,6 +43,7 @@ repo_tree.txt
 download.png
 package-lock.json
 notes/
+memory/
 .gemini/
 .antigravity/
 .claude/
