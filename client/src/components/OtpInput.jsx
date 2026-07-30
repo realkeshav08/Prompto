@@ -7,7 +7,17 @@ const LENGTH = 6
 
 const OtpInput = ({ value = '', onChange, autoFocus = false }) => {
   const refs = useRef([])
-  const focus = (i) => refs.current[Math.max(0, Math.min(LENGTH - 1, i))]?.focus()
+
+  // Set while we move focus ourselves. `.focus()` dispatches its event
+  // synchronously, so handleFocus would otherwise run against the pre-update
+  // `value` still captured in this render's closure and bounce the caret back.
+  const movingFocus = useRef(false)
+
+  const focus = (i) => {
+    movingFocus.current = true
+    refs.current[Math.max(0, Math.min(LENGTH - 1, i))]?.focus()
+    movingFocus.current = false
+  }
 
   const handleChange = (i, e) => {
     const digit = e.target.value.replace(/\D/g, '').slice(-1)
@@ -38,8 +48,11 @@ const OtpInput = ({ value = '', onChange, autoFocus = false }) => {
     focus(pasted.length)
   }
 
-  // Keep entry sequential — clicking a box past the filled prefix jumps back.
+  // Keep entry sequential — clicking a box past the filled prefix jumps back to
+  // the first empty one. Only applies to focus the user initiated; our own
+  // auto-advance is already landing on the correct box.
   const handleFocus = (i) => {
+    if (movingFocus.current) return
     if (i > value.length) focus(value.length)
   }
 
