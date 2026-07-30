@@ -27,9 +27,15 @@ const EMAIL_USER = process.env.EMAIL_USER || 'asuskeshavkashyap@gmail.com';
    sensible client timeout and treat a slow provider as a failed send. */
 const SEND_TIMEOUT_MS = Number(process.env.EMAIL_TIMEOUT_MS) || 10000;
 
+/* The same timeout budget as the API path. Without these, a host that silently
+   drops SMTP traffic leaves the socket opening until the OS gives up (~60s),
+   which is long enough for the caller's request to be aborted by the gateway. */
 const smtpTransporter = nodemailer.createTransport({
   service: 'gmail',
   auth: { user: EMAIL_USER, pass: process.env.EMAIL_PASS },
+  connectionTimeout: SEND_TIMEOUT_MS,
+  greetingTimeout: SEND_TIMEOUT_MS,
+  socketTimeout: SEND_TIMEOUT_MS,
 });
 
 /* Shared chrome for every message. Templates supply only their own body, so the
