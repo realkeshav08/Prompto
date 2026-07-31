@@ -11,7 +11,6 @@ const CREDIT_COSTS = [
   ['Text chat', 1],
   ['Study AI', 2],
   ['Image generation', 2],
-  ['Video generation', 4],
 ]
 
 const TERMS = [

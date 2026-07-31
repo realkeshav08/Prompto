@@ -451,8 +451,8 @@ export const resendVerification = async (req, res) => {
 };
 
 /* ---------------- COMMUNITY GALLERY (PUBLIC) ----------------
-   Every image/video a user opted to "feature in the community collection"
-   across all accounts, newest first. Powers the public Visual Showcase.
+   Every image a user opted to "feature in the community collection" across all
+   accounts, newest first. Powers the public Visual Showcase.
 
    This aggregation unwinds every message of every chat, so it must not run on
    each request of a public, unauthenticated endpoint. Results are cached in
@@ -473,10 +473,7 @@ export const getPublishedImages = async (_req, res) => {
       { $unwind: '$messages' },
       {
         $match: {
-          $or: [
-            { 'messages.isImage': true },
-            { 'messages.isVideo': true }
-          ],
+          'messages.isImage': true,
           'messages.isPublished': true,
         },
       },
@@ -484,7 +481,6 @@ export const getPublishedImages = async (_req, res) => {
         $project: {
           _id: 0,
           url: '$messages.content',
-          isVideo: '$messages.isVideo',
           isImage: '$messages.isImage',
           userName: '$userName',
           createdAt: '$messages.timestamp',
@@ -525,10 +521,7 @@ export const getMyPublishedAssets = async (req, res) => {
       { $unwind: '$messages' },
       {
         $match: {
-          $or: [
-            { 'messages.isImage': true },
-            { 'messages.isVideo': true },
-          ],
+          'messages.isImage': true,
           'messages.isPublished': true,
         },
       },
@@ -537,7 +530,6 @@ export const getMyPublishedAssets = async (req, res) => {
           _id: 0,
           chatId: '$_id',
           url: '$messages.content',
-          isVideo: '$messages.isVideo',
           isImage: '$messages.isImage',
           createdAt: '$messages.timestamp',
         },

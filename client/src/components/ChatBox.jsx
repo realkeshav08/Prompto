@@ -116,8 +116,8 @@ const ChatBox = () => {
         if (!data.reply?.stopped) {
           setUser(prev => ({
             ...prev,
-            // video 4 · image 2 · study 2 · text 1
-            credits: prev.credits - (sendMode === 'video' ? 4 : sendMode === 'image' ? 2 : sendMode === 'study' ? 2 : 1)
+            // image 2 · study 2 · text 1
+            credits: prev.credits - (sendMode === 'image' || sendMode === 'study' ? 2 : 1)
           }))
 
           // First exchange — the server generates a clean AI title in the
@@ -151,10 +151,6 @@ const ChatBox = () => {
     if (!user) return toast('Login to send message')
     if (!selectedChat) return toast.error('No active session. Please start a new session.')
     if (!prompt.trim()) return
-
-    if (mode === 'video') {
-      return toast('🎬 Video generation is an upcoming feature — coming soon!')
-    }
 
     const text = prompt.trim()
     setPrompt('')
@@ -402,7 +398,7 @@ const ChatBox = () => {
 
       {/* Modern Interaction Area */}
       <div className="p-6 md:px-12 xl:px-24">
-        {(mode === 'image' || mode === 'video') && (
+        {mode === 'image' && (
           <label className="flex items-center gap-3 text-[11px] font-bold text-muted mb-4 px-4 uppercase tracking-widest">
             <input
               type="checkbox"
@@ -460,7 +456,6 @@ const ChatBox = () => {
             >
               <option value="text">Chat</option>
               <option value="image">Draw</option>
-              <option value="video">Video</option>
               <option value="study">Study AI</option>
             </select>
           </div>

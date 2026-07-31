@@ -3,7 +3,6 @@ import { protect } from '../middlewares/auth.js';
 import {
   imageMessageController,
   textMessageController,
-  videoMessageController,
   ragMessageController,
   regenerateMessageController,
 } from '../controllers/messageController.js';
@@ -17,9 +16,6 @@ messageRouter.post('/text', protect, textMessageController);
 
 // Image generation message
 messageRouter.post('/image', protect, imageMessageController);
-
-// Video generation message
-messageRouter.post('/video', protect, videoMessageController);
 
 // Study AI — RAG-powered response
 messageRouter.post('/rag', protect, ragMessageController);

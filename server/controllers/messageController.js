@@ -41,8 +41,8 @@ const refundCredits = async (userId, amount) => {
    and kept until a character budget is reached, so long chats stay fast and
    within the model's context limit while preserving multi-turn memory.
 
-   Image/video replies are stored as raw asset URLs — they're swapped for a
-   text placeholder so the model doesn't mimic the URL and hallucinate links. */
+   Image replies are stored as raw asset URLs — they're swapped for a text
+   placeholder so the model doesn't mimic the URL and hallucinate links. */
 const HISTORY_CHAR_BUDGET = 30000; // ~7-8k tokens of recent conversation
 
 const buildHistory = (messages) => {
@@ -51,11 +51,7 @@ const buildHistory = (messages) => {
 
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
-    const content = m.isVideo
-      ? '[generated a video]'
-      : m.isImage
-        ? '[generated an image]'
-        : (m.content || '');
+    const content = m.isImage ? '[generated an image]' : (m.content || '');
 
     // Stop once the budget is spent — but always keep at least the latest turn.
     if (content.length > budget && out.length > 0) break;
@@ -645,15 +641,3 @@ export const regenerateMessageController = async (req, res) => {
   }
 };
 
-/* ===================================================== */
-/* ================= VIDEO MESSAGE ===================== */
-/* ===================================================== */
-
-export const videoMessageController = async (_req, res) => {
-  // There is no free text-to-video model to back this (Gemini's Veo is
-  // paid-only). Surfaced to the user as an upcoming feature — no credits charged.
-  return res.status(503).json({
-    success: false,
-    message: "🎬 Video generation is an upcoming feature — coming soon!",
-  });
-};

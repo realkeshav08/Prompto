@@ -144,35 +144,20 @@ const Community = () => {
               {/* Media opens full-size in a new tab */}
               <a href={item.url} target="_blank" rel="noreferrer" className="block">
                 <div className="aspect-[4/3] overflow-hidden relative">
-                  {item.isVideo ? (
-                    <video
-                      src={item.url}
-                      autoPlay
-                      loop
-                      muted
-                      playsInline
-                      className="
-                        w-full h-full object-cover
-                        group-hover:scale-110
-                        transition-transform duration-700 ease-out
-                      "
-                    />
-                  ) : (
-                    <img
-                      src={item.url}
-                      alt="community creation"
-                      className="
-                        w-full h-full object-cover
-                        group-hover:scale-110
-                        transition-transform duration-700 ease-out
-                      "
-                    />
-                  )}
+                  <img
+                    src={item.url}
+                    alt="community creation"
+                    className="
+                      w-full h-full object-cover
+                      group-hover:scale-110
+                      transition-transform duration-700 ease-out
+                    "
+                  />
 
                   {/* Type Badge */}
                   <div className="absolute top-4 right-4 z-10">
                     <div className="px-2.5 py-1 rounded-lg bg-black/40 backdrop-blur-md border border-white/10 text-[8px] font-black uppercase tracking-widest text-white shadow-xl">
-                      {item.isVideo ? 'Video' : 'Image'}
+                      Image
                     </div>
                   </div>
 

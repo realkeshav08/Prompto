@@ -28,11 +28,6 @@ const MessageSchema = new Schema(
       default: false,
     },
 
-    isVideo: {
-      type: Boolean,
-      default: false,
-    },
-
     isPublished: {
       type: Boolean,
       default: false,

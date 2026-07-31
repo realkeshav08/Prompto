@@ -8,7 +8,7 @@ credit-based billing system.
 
 ## Features
 
-- **Multi-Modal AI** — Text chat, image generation, and Study AI (RAG) modes. (Video generation is an upcoming feature.)
+- **Multi-Modal AI** — Text chat, image generation, and Study AI (RAG) modes.
 - **Study AI (RAG)** — Upload PDFs, DOCX, TXT files, **images**, or paste URLs; ask questions grounded in your own materials. Scanned/image-only PDFs and photos are read with **OCR**.
 - **AI-generated chat titles** — Each conversation is auto-named from its first exchange; titles are also editable.
 - **Conversation memory** — A bounded, recent-context window of the chat history is passed to the model for coherent multi-turn replies.
@@ -134,7 +134,6 @@ Create a Vector Search index named `vector_index` on the `document_chunks` colle
 | Text chat | 1 |
 | Study AI (RAG) | 2 |
 | Image generation | 2 |
-| Video generation | 4 *(upcoming)* |
 
 New accounts start with 100 credits.
 
