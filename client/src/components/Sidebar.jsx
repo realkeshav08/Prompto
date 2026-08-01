@@ -59,14 +59,21 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
      every later selection, where yanking the list under the user's cursor
      would be the wrong behaviour. */
   const activeChatRef = useRef(null)
+  const historyListRef = useRef(null)
   const didRevealActive = useRef(false)
 
   useEffect(() => {
-    if (didRevealActive.current || !chatsLoaded || !activeChatRef.current) return
+    const item = activeChatRef.current
+    const list = historyListRef.current
+    if (didRevealActive.current || !chatsLoaded || !item || !list) return
     didRevealActive.current = true
-    // 'auto' rather than smooth: on first paint this should already be in
-    // place, not animate from the top while the user is reading.
-    activeChatRef.current.scrollIntoView({ block: 'center', behavior: 'auto' })
+
+    /* Move this one container, rather than calling scrollIntoView on the item.
+       scrollIntoView walks up and scrolls every scrollable ancestor including
+       the document, so restoring a session low in the list dragged the whole
+       page up — the layout appeared correct, then jumped. Setting scrollTop
+       cannot escape the element it is called on. */
+    list.scrollTop = item.offsetTop - list.clientHeight / 2 + item.clientHeight / 2
   }, [chatsLoaded, selectedChat?._id])
 
   const deleteChat = async (e, chatId) => {
@@ -205,7 +212,7 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
         </div>
 
       {/* 2. History List (Scrollable) */}
-      <div className="flex-1 min-h-0 overflow-y-auto pr-2 -mr-2 custom-scrollbar space-y-3 relative mb-6">
+      <div ref={historyListRef} className="flex-1 min-h-0 overflow-y-auto pr-2 -mr-2 custom-scrollbar space-y-3 relative mb-6">
         {!chatsLoaded ? (
           /* Placeholder rows until the first fetch settles. Rendering the
              "no sessions" copy here instead would assert something we don't
