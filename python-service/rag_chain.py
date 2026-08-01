@@ -127,7 +127,13 @@ def _sanitize(text: str) -> str:
 _mongo_client = None
 _ai_client = None
 _vector_store = None
-_lock = threading.Lock()
+
+# Reentrant on purpose: get_vector_store() calls get_mongo_client() while already
+# holding this lock, and a plain Lock cannot be re-acquired by the thread that
+# owns it. With threading.Lock the first /rag call after a restart blocked
+# forever and never released, so every later call blocked behind it too — the
+# endpoint hung rather than failing, which no timeout downstream could rescue.
+_lock = threading.RLock()
 
 def get_mongo_client():
     global _mongo_client
