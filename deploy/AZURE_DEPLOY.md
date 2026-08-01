@@ -14,7 +14,10 @@ Legend: 👤 = you do it (Azure portal / DNS / secrets) · 🤖 = the `setup.sh`
   adds it) is ~\$8/mo → your \$100 student credit lasts ~12 months. Bump to
   **B1ms** (2 GB) later if you see the Python service getting OOM-restarted.
 - Have ready: MongoDB Atlas URI, Gemini API key, ImageKit keys, Stripe keys,
-  Gmail app password, and a strong `INTERNAL_API_KEY` (same string in both services).
+  a **Resend API key**, and a strong `INTERNAL_API_KEY` (same string in both services).
+- Email goes over Resend's HTTPS API, not SMTP. Cloud providers block outbound
+  25/465/587 by default — Azure included — so an SMTP transport cannot connect
+  from the VM at all. Don't swap it back to Gmail; it will fail the same way.
 
 ---
 
@@ -30,6 +33,13 @@ Legend: 👤 = you do it (Azure portal / DNS / secrets) · 🤖 = the `setup.sh`
 Allow **22 (SSH)**, **80 (HTTP)**, **443 (HTTPS)**.
 **Do NOT open 3001, 8000, or 6379** — those stay internal. (Tip: restrict 22's
 source to *My IP* for safety.)
+
+> This rule is load-bearing, not just tidiness. The AI service having no public
+> attack surface rests on two things: uvicorn binding `127.0.0.1` (set in
+> `deploy/ecosystem.config.cjs`) and 8000 never being opened here. Exposing it —
+> or adding an Nginx vhost for it — would make that claim untrue. Verify after
+> cutover: from your laptop, `curl http://<VM_IP>:8000/` must fail to connect,
+> and the same for 3001 and 6379.
 
 ## 3. 👤 Whitelist the VM in MongoDB Atlas
 Atlas → *Network Access* → *Add IP Address* → paste the VM's **public IP**.
@@ -65,11 +75,19 @@ bash deploy/setup.sh        # re-run: this time it starts everything
 **`server/.env` must include (in addition to your API keys):**
 ```
 PORT=3001
+NODE_ENV=production
 REDIS_URL=redis://127.0.0.1:6379
 PYTHON_AI_URL=http://127.0.0.1:8000
 CLIENT_URL=https://prompto.keshavkashyap.me
 INTERNAL_API_KEY=<same-long-random-string-as-python>
+
+# Email over HTTPS. EMAIL_FROM must be on a domain verified in Resend, or
+# delivery is limited to the account owner's own address.
+RESEND_API_KEY=<resend-api-key>
+EMAIL_FROM=Prompto <noreply@keshavkashyap.me>
 ```
+`NODE_ENV=production` is what sets the `Secure` flag on the auth cookie, so it
+is not optional — PM2 sets it too, but the file should agree.
 **`python-service/.env` must include:**
 ```
 MONGODB_DB_NAME=quickgpt
