@@ -309,24 +309,30 @@ const ChatBox = () => {
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-6 md:px-12 xl:px-32 py-10 space-y-8 scroll-smooth custom-scrollbar"
       >
+        {/* Empty state. min-h-full, not h-full: pinning the height to the
+            viewport while centring taller content overflows it in both
+            directions, and the part pushed above the top can never be scrolled
+            back to. Growing past the container instead lets it scroll normally
+            — that overflow is what clipped the lower cards once Study AI added
+            its source row. */}
         {messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center animate-fade-in max-w-4xl mx-auto">
-            <div className="relative mb-10">
-              <div className="absolute inset-0 bg-accent/20 blur-3xl rounded-full" />
-              <div className="relative w-24 h-24 flex items-center justify-center">
-                <img src={assets.logo} className="w-20 rounded-3xl" alt="logo" />
+          <div className="min-h-full flex flex-col items-center justify-center text-center animate-fade-in max-w-3xl mx-auto">
+            <div className="relative mb-6">
+              <div className="absolute inset-0 bg-accent/10 blur-2xl rounded-full" />
+              <div className="relative w-16 h-16 flex items-center justify-center">
+                <img src={assets.logo} className="w-14 rounded-2xl" alt="logo" />
               </div>
             </div>
 
-            <h1 className="text-4xl md:text-6xl font-black tracking-tight text-text mb-6 leading-[1.1]">
-              What do you want to <span className="text-accent underline decoration-accent/20 underline-offset-8 italic">learn</span> today?
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-text mb-3 leading-tight">
+              What do you want to <span className="text-accent">learn</span> today?
             </h1>
 
-            <p className="text-lg text-muted/80 max-w-xl font-medium leading-relaxed mb-12">
-              Upload your notes, ask any question, and get clear explanations — Prompto is your AI study partner for every subject.
+            <p className="text-sm text-muted max-w-md leading-relaxed mb-8">
+              Upload your notes, ask any question, and get clear explanations.
             </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full px-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full">
               <PromptCard
                 text="Explain a tough concept simply"
                 onClick={() => setPrompt("Explain quantum entanglement in simple terms with an everyday analogy")}
@@ -506,15 +512,15 @@ const PromptCard = ({ text, onClick }) => (
   <div
     onClick={onClick}
     className="
-      p-5 glass rounded-2xl text-left
+      p-3.5 glass rounded-xl text-left
       cursor-pointer group/card
-      transition-all duration-300
-      hover:border-accent/30 hover:bg-accent/[0.02]
-      flex items-center gap-4
+      transition-colors duration-200
+      hover:border-accent/30 hover:bg-accent/[0.03]
+      flex items-center gap-3
     "
   >
-    <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center text-accent font-bold group-hover/card:bg-accent group-hover/card:text-white transition-all">
-      <span className="text-xs">→</span>
+    <div className="w-6 h-6 shrink-0 rounded-md bg-accent/10 flex items-center justify-center text-accent group-hover/card:bg-accent group-hover/card:text-white transition-colors">
+      <span className="text-[11px]">→</span>
     </div>
     <span className="text-sm font-semibold text-muted group-hover/card:text-text transition-colors leading-tight">
       {text}
