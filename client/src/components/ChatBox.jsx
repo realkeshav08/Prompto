@@ -317,11 +317,13 @@ const ChatBox = () => {
             its source row. */}
         {messages.length === 0 && chatsLoaded && (
           <div className="min-h-full flex flex-col items-center justify-center text-center animate-fade-in max-w-3xl mx-auto">
+            {/* The asset already carries its own dark tile, so insetting it in
+                a larger box rendered a square-within-a-rounded-square. Letting
+                it fill the box and rounding the image itself makes the mark and
+                its tile read as one shape. */}
             <div className="relative mb-6">
               <div className="absolute inset-0 bg-accent/10 blur-2xl rounded-full" />
-              <div className="relative w-16 h-16 flex items-center justify-center">
-                <img src={assets.logo} className="w-14 rounded-2xl" alt="logo" />
-              </div>
+              <img src={assets.logo} className="relative w-16 h-16 rounded-2xl object-cover" alt="logo" />
             </div>
 
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-text mb-3 leading-tight">

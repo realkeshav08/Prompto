@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useAppContext } from '../context'
 import { assets } from '../assets/assets'
 import toast from 'react-hot-toast'
@@ -35,14 +35,11 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
     chats,
     selectedChat,
     setSelectedChat,
-    theme,
-    setTheme,
     user,
     navigate,
     createNewChat,
     axios,
     setChats,
-    fetchUsersChats,
     loadMoreChats,
     chatsCursor,
     chatsLoaded
@@ -53,6 +50,24 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
   const [editValue, setEditValue] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const cancelRename = useRef(false)
+
+  /* Reveal the restored session in the history list.
+     A reload keeps the previously open chat selected, but the list renders from
+     the top, so a session further down stays scrolled out of view and the
+     sidebar looks like it lost your place. Scroll it into view once the list
+     first renders — guarded by a ref so it fires only for that restore, not on
+     every later selection, where yanking the list under the user's cursor
+     would be the wrong behaviour. */
+  const activeChatRef = useRef(null)
+  const didRevealActive = useRef(false)
+
+  useEffect(() => {
+    if (didRevealActive.current || !chatsLoaded || !activeChatRef.current) return
+    didRevealActive.current = true
+    // 'auto' rather than smooth: on first paint this should already be in
+    // place, not animate from the top while the user is reading.
+    activeChatRef.current.scrollIntoView({ block: 'center', behavior: 'auto' })
+  }, [chatsLoaded, selectedChat?._id])
 
   const deleteChat = async (e, chatId) => {
     try {
@@ -184,16 +199,8 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
           </div>
 
           {/* Recent History Header */}
-          <div className="flex items-center justify-between mb-3 px-2">
+          <div className="mb-3 px-2">
             <p className="text-[10px] font-bold text-muted tracking-widest uppercase">Recent activity</p>
-            <button
-              onClick={fetchUsersChats}
-              aria-label="Refresh chat history"
-              className="p-1 hover:bg-accent/10 rounded-lg transition-all active:rotate-180 duration-500"
-              title="Refresh history"
-            >
-              <img src={assets.logo} className="w-2.5 opacity-30 invert dark:invert-0" alt="refresh" />
-            </button>
           </div>
         </div>
 
@@ -248,6 +255,7 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
               return (
                 <div
                   key={chat._id || Math.random()}
+                  ref={isActive ? activeChatRef : null}
                   onClick={() => {
                     navigate('/')
                     setSelectedChat(chat)
@@ -397,31 +405,31 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
             </svg>
           </button>
           
-          <div
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            role="button"
-            tabIndex={0}
-            aria-label="Toggle light or dark theme"
-            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTheme(theme === 'dark' ? 'light' : 'dark') } }}
-            className="p-2.5 bg-panel border border-border rounded-xl cursor-pointer hover:bg-accent/5 transition-all"
-          >
-            <div className="w-4 h-4 flex items-center justify-center">
-              <div className={`w-3.5 h-3.5 rounded-full border-2 border-accent transition-all ${theme === 'dark' ? 'bg-accent' : 'bg-transparent'}`} />
-            </div>
-          </div>
         </div>
       </div>
 
         {/* Mobile Interaction Close */}
+        {/* bg-accent-soft is a 12%-opacity tint — nearly invisible against the
+            drawer. A solid panel surface gives the control a visible edge, and
+            brightness-0 collapses the icon's own grey to black before inverting,
+            so it lands on the text colour instead of a washed-out mid-grey. */}
         <button
           onClick={() => setIsMenuOpen(false)}
+          aria-label="Close menu"
           className="
             xl:hidden
             absolute top-8 right-8
-            p-3 rounded-2xl bg-accent-soft
+            p-3 rounded-2xl
+            bg-panel border border-border
+            hover:bg-accent hover:border-accent
+            transition-colors group/close
           "
         >
-          <img src={assets.close_icon} className="w-5 dark:invert" />
+          <img
+            src={assets.close_icon}
+            alt=""
+            className="w-5 brightness-0 dark:invert group-hover/close:brightness-0 group-hover/close:invert"
+          />
         </button>
       </aside>
       <Settings isOpen={showSettings} onClose={() => setShowSettings(false)} />

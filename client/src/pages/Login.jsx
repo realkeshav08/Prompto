@@ -216,9 +216,13 @@ const Login = () => {
       >
         {/* Brand/Logo */}
         <div className="flex flex-col items-center mb-10">
-          <div className="w-16 h-16 flex items-center justify-center mb-6 hover:rotate-12 transition-transform duration-500">
-            <img src={assets.logo} className="w-14 rounded-xl" alt="logo" />
-          </div>
+          {/* Fills its box and rounds the image itself — insetting the asset,
+              which already has its own tile, showed a square inside a square. */}
+          <img
+            src={assets.logo}
+            alt="logo"
+            className="w-16 h-16 rounded-2xl object-cover mb-6 hover:rotate-12 transition-transform duration-500"
+          />
           <h1 className="text-3xl font-black tracking-tight text-center">
             {verifyMode ? (
               <>Verify <span className="text-gradient">Email</span></>
