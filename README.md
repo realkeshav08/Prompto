@@ -1,186 +1,136 @@
-# Prompto | The Advanced AI Workspace
+# Prompto
 
-Prompto is a full-stack AI platform for text generation, image creation, and
-RAG-powered Study AI. Built with a modern glassmorphic aesthetic and a
-credit-based billing system.
+A full-stack AI study workspace: chat, image generation, and a RAG pipeline that
+answers questions from your own documents. Credit-based, with Stripe billing.
 
----
-
-## Features
-
-- **Multi-Modal AI** — Text chat, image generation, and Study AI (RAG) modes.
-- **Study AI (RAG)** — Upload PDFs, DOCX, TXT files, **images**, or paste URLs; ask questions grounded in your own materials. Scanned/image-only PDFs and photos are read with **OCR**.
-- **AI-generated chat titles** — Each conversation is auto-named from its first exchange; titles are also editable.
-- **Conversation memory** — A bounded, recent-context window of the chat history is passed to the model for coherent multi-turn replies.
-- **Resilient image generation** — A cascade of free providers (Pollinations → Gemini → ImageKit) so a quota limit on one doesn't break image creation.
-- **Resilient messaging** — A failed/timed-out reply is saved as a "Stopped" placeholder (the user's message is never lost) with one-click **Regenerate**; credits are refunded automatically.
-- **Credit system** — Stripe-integrated billing with per-feature credit costs and automatic refunds on failure.
-- **Community Gallery** — Publish and browse AI-generated images, plus a **My Uploads** view to remove your own creations from the community.
-- **In-app Settings** — Profile, password change, plan/credits, theme, and Terms / Privacy.
-- **Secure auth** — JWT authentication with session revocation, bcrypt password hashing, email verification at signup, and OTP-based password recovery.
+**[Live](https://prompto.keshavkashyap.me)** · [Frontend on Vercel, services on a single VPS]
 
 ---
 
-## Tech Stack
+## What it does
 
-### Frontend
-- React 19, Vite 8, Tailwind CSS v4
-- React Router 7, Axios, React Markdown, React Hot Toast
+- **Chat** — conversational replies with a bounded window of recent history.
+- **Study AI (RAG)** — upload PDF, DOCX, TXT, images or a URL, then ask questions
+  grounded in that material. Scanned PDFs and photos are read with OCR. You choose
+  whether to search your own notes, a shared library, or both.
+- **Image generation** — falls through a cascade of free providers so one being
+  rate-limited doesn't break the feature.
+- **Credits** — 1 for chat, 2 for Study AI, 2 for an image. New accounts get 100.
+  A failed generation refunds automatically.
+- **Accounts** — email-verified signup, OTP password recovery, session revocation.
 
-### Backend (Node.js)
-- Express 5, MongoDB + Mongoose
-- LangChain (`@langchain/mongodb`, `@langchain/google-genai`) for document ingestion
-- ImageKit SDK, Stripe API, Nodemailer
-- `helmet`, `compression`, `express-rate-limit`, `zod` (input validation)
-- `pino` structured logging with request IDs; optional Redis-backed rate limiting and Sentry error tracking
-- `vitest` unit tests
-
-### AI Microservice (Python)
-- FastAPI + Uvicorn
-- Google Gemini API (`google-genai`) with a multi-model cascading fallback
-- LangChain + MongoDB Atlas Vector Search for RAG
-- Embedding model: `gemini-embedding-001` (3072 dimensions)
+A failed reply is saved as a "Stopped" placeholder rather than lost, and can be
+regenerated in one click.
 
 ---
 
 ## Architecture
 
 ```
-Client (React) → Node.js API → Python FastAPI
-                     ↓               ↓
-                  MongoDB        Gemini AI
+React SPA  →  Node/Express API  →  Python FastAPI (localhost only)
+                     ↓                        ↓
+                 MongoDB                  Gemini API
                      ↓
-            MongoDB Atlas Vector Search
+          Atlas Vector Search
 ```
 
-The Node.js server handles auth, credits, and data persistence. All AI
-inference is delegated to the Python microservice.
+The Node API owns auth, credits and persistence. All model calls go through the
+Python service, which binds to `127.0.0.1` and requires a shared secret — so it
+has no public surface, and an AI outage degrades one feature instead of the app.
+
+**Stack:** React 19 · Vite · Tailwind 4 · Express 5 · MongoDB · FastAPI ·
+Gemini · LangChain · Stripe · Nginx · PM2
 
 ---
 
-## Getting Started
+## Running locally
 
-### Prerequisites
-- Node.js v20+
-- Python 3.10+
-- MongoDB Atlas cluster with a Vector Search index on `document_chunks`
-- Gemini API key
-- Stripe account
-- ImageKit account
+Needs Node 20+, Python 3.10+, a MongoDB Atlas cluster, and Gemini/Stripe/ImageKit
+keys. Each service has a `.env.example` to copy.
 
-### 1. Clone the repo
 ```bash
-git clone https://github.com/realkeshav08/Prompto.git
-cd Prompto
-```
-
-### 2. Python AI service
-```bash
+# Python AI service
 cd python-service
-pip install -r requirements.txt
-cp .env.example .env   # fill in your values
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
+python -m venv venv && ./venv/bin/pip install -r requirements.txt
+cp .env.example .env
+./venv/bin/uvicorn main:app --port 8000
+
+# Node API
+cd server && pnpm install && cp .env.example .env && pnpm dev
+
+# React client
+cd client && npm install && cp .env.example .env && npm run dev
 ```
 
-### 3. Node.js backend
-```bash
-cd server
-npm install
-cp .env.example .env   # fill in your values
-npm run dev
-```
+Open http://localhost:5173
 
-### 4. React frontend
-```bash
-cd client
-npm install
-cp .env.example .env   # fill in your values
-npm run dev
-```
+> `INTERNAL_API_KEY` must be identical in `server/.env` and
+> `python-service/.env` — it's what lets the AI service reject any caller other
+> than the Node API.
 
-Open **http://localhost:5173**
+Email sends through [Resend](https://resend.com) over HTTPS. Without
+`RESEND_API_KEY` it falls back to SMTP, which is fine locally but blocked on most
+cloud hosts.
 
-> **Note:** `INTERNAL_API_KEY` must be set to the **same value** in both
-> `server/.env` and `python-service/.env` — it lets the AI service reject any
-> caller other than the Node API.
+### Atlas vector index
 
----
-
-## MongoDB Atlas Vector Search Index
-
-Create a Vector Search index named `vector_index` on the `document_chunks` collection:
+Create a Vector Search index named `vector_index` on `document_chunks`:
 
 ```json
 {
   "fields": [
-    {
-      "type": "vector",
-      "path": "embedding",
-      "numDimensions": 3072,
-      "similarity": "cosine"
-    },
+    { "type": "vector", "path": "embedding", "numDimensions": 3072, "similarity": "cosine" },
     { "type": "filter", "path": "userId" },
     { "type": "filter", "path": "isGlobal" }
   ]
 }
 ```
 
----
-
-## Credit Costs
-
-| Feature | Credits |
-|---------|---------|
-| Text chat | 1 |
-| Study AI (RAG) | 2 |
-| Image generation | 2 |
-
-New accounts start with 100 credits.
+The dimension has to match the embedding model (`gemini-embedding-001`) on both
+the Node ingestion path and the Python retrieval path.
 
 ---
 
-## Security
+## Notes on the implementation
 
-- JWT auth with bcrypt-hashed passwords and **session revocation** via a token
-  version (logout / password change / reset invalidate prior tokens).
-- **Email verification** at signup; password recovery uses a hashed, expiring OTP
-  with a wrong-attempt lockout (codes are never stored in plaintext).
-- Rate limiting on auth/password endpoints (brute-force protection), stricter
-  limits on AI generation (`/api/message`) and document upload endpoints to cap
-  cost/abuse; optionally Redis-backed for multi-instance deployments.
-- Request body size limits and Zod schema validation on message inputs.
-- **Stripe webhook is exactly-once** (atomic claim-then-credit) so retries can't
-  double-credit; credits are refunded on any generation failure.
-- The Python AI service requires an internal shared key (`INTERNAL_API_KEY`) and
-  binds to localhost only — it is never publicly exposed.
-- URL document ingestion is SSRF-guarded (private/internal addresses blocked).
-- Shared "global" Study AI documents can only be uploaded **or deleted** by `ADMIN_EMAIL`.
-- AI system prompts are hardened against prompt injection and document poisoning.
+Things that were less obvious than they looked:
 
----
-
-## Production Deployment
-
-The production stack runs the Node backend and Python service together on a
-single VPS, both managed by PM2 (auto-restart on crash/reboot via `pm2 save` +
-a systemd startup hook):
-
-- **Frontend** → Vercel — set `VITE_SERVER_URL` to the backend URL.
-- **Node.js backend** → VPS, on an internal port (e.g. `3001`) behind an Nginx
-  reverse proxy with HTTPS (Let's Encrypt), fronted by Cloudflare. Set
-  `CLIENT_URL` (frontend URL) and `PYTHON_AI_URL` (`http://127.0.0.1:8000`).
-- **Python microservice** → same VPS, bound to **`127.0.0.1:8000` only** (never
-  publicly exposed). Start command `uvicorn main:app --host 127.0.0.1 --port 8000`.
-- Set the **same** `INTERNAL_API_KEY` on the backend and the Python service.
-- Register the production Stripe webhook at `/api/webhook/stripe`.
-- Lock MongoDB Atlas **Network Access** to the VPS IP only.
-- Point health checks at **`/health`** (reports `503` when the DB is down). The
-  server shuts down gracefully on `SIGTERM`/`SIGINT`, draining in-flight requests.
-- Optional env vars: `REDIS_URL` (shared rate limiting across workers/instances),
-  `SENTRY_DSN` (error tracking — also `npm i @sentry/node`), `LOG_LEVEL` (default `info`).
+- **Credits are decremented atomically** — the balance check lives inside the
+  update filter, so two concurrent requests can't both pass it.
+- **The Stripe webhook is exactly-once.** It claims the transaction with a
+  compare-and-set before crediting, so a retry is a no-op rather than a second
+  credit.
+- **Retrieval is filtered per user** at the vector-search level, not after the
+  fact, so one tenant's documents can't surface in another's answers.
+- **Retrieved chunks are fenced** with a random per-request marker and stripped
+  of invisible characters, so text inside a document can't pose as an
+  instruction.
+- **URL ingestion is SSRF-guarded** — private, loopback and cloud-metadata
+  addresses are rejected, and every redirect hop is re-checked.
+- Requests are validated by Zod schemas before reaching a handler; declaring
+  fields as strings is also what stops MongoDB operators being smuggled into a
+  query.
 
 ---
 
-## License
+## Deploying
 
-Open-source. Created by [realkeshav08](https://github.com/realkeshav08).
+Both backend services run on one VPS under PM2, behind Nginx with a Let's
+Encrypt certificate and Cloudflare in front. The frontend deploys to Vercel.
+
+See [`deploy/AZURE_DEPLOY.md`](deploy/AZURE_DEPLOY.md) for a step-by-step setup;
+`deploy/setup.sh` provisions a fresh Ubuntu box and is safe to re-run.
+
+Worth knowing: `/health` returns 503 when the database is unreachable, the server
+drains in-flight requests on `SIGTERM`, and Atlas Network Access is per-IP — a new
+host has to be allowlisted or the API won't start.
+
+---
+
+## Status
+
+Personal project, actively maintained. Test coverage is light and focused on the
+parts where a silent regression would be expensive (input validation, SSRF
+predicates); the billing path is verified manually.
+
+Created by [realkeshav08](https://github.com/realkeshav08).
