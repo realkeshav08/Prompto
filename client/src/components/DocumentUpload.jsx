@@ -11,6 +11,7 @@ const DocumentUpload = ({ isOpen, onClose }) => {
   const [docs, setDocs] = useState([])
   const [url, setUrl] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [dragging, setDragging] = useState(false)
   const [deleting, setDeleting] = useState(null)
   const [isGlobal, setIsGlobal] = useState(false)
 
@@ -55,14 +56,16 @@ const DocumentUpload = ({ isOpen, onClose }) => {
     }
   }
 
-  const handleUrlSubmit = async (e) => {
-    e.preventDefault()
-    if (!url.trim()) return
+  /* Takes the address directly rather than reading it off state, so both the
+     Add button and a link dropped onto the zone share one ingestion path. */
+  const ingestUrl = async (rawUrl) => {
+    const target = rawUrl.trim()
+    if (!target) return
     setUploading(true)
     try {
       const { data } = await axios.post(
         '/api/document/upload',
-        { url: url.trim(), isGlobal },
+        { url: target, isGlobal },
         { timeout: 180000 }
       )
       if (data.success) {
@@ -77,6 +80,41 @@ const DocumentUpload = ({ isOpen, onClose }) => {
     } finally {
       setUploading(false)
     }
+  }
+
+  const handleUrlSubmit = (e) => {
+    e.preventDefault()
+    ingestUrl(url)
+  }
+
+  /* A drop carries either files or, when a link or selected text is dragged,
+     no file at all — just the address. Handling only the former made dragging a
+     link silently do nothing, even though URL ingestion is a supported source.
+     Browsers expose the link as uri-list; dragging from an address bar or a
+     text editor arrives as plain text instead, so both are read. */
+  const handleDrop = (e) => {
+    e.preventDefault()
+    setDragging(false)
+
+    const file = e.dataTransfer.files?.[0]
+    if (file) return handleFileUpload(file)
+
+    const dropped =
+      e.dataTransfer.getData('text/uri-list') ||
+      e.dataTransfer.getData('text/plain') ||
+      ''
+    // uri-list may carry comment lines beginning with '#', per RFC 2483.
+    const candidate = dropped
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .find(line => line && !line.startsWith('#'))
+
+    if (!candidate) return
+    if (!/^https?:\/\//i.test(candidate)) {
+      toast.error('Only http and https links can be added')
+      return
+    }
+    ingestUrl(candidate)
   }
 
   const handleDelete = async (id) => {
@@ -120,9 +158,19 @@ const DocumentUpload = ({ isOpen, onClose }) => {
         {/* File drop zone */}
         <div
           onClick={() => fileRef.current?.click()}
-          onDragOver={e => e.preventDefault()}
-          onDrop={e => { e.preventDefault(); handleFileUpload(e.dataTransfer.files[0]) }}
-          className="border-2 border-dashed border-border/60 rounded-2xl p-6 text-center cursor-pointer hover:border-accent/50 hover:bg-accent/[0.02] transition-all"
+          onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
+          onDragEnter={e => { e.preventDefault(); setDragging(true) }}
+          onDragLeave={e => {
+            // Fires when moving over a child too; ignore those so the highlight
+            // doesn't flicker while the pointer crosses the inner text.
+            if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false)
+          }}
+          onDrop={handleDrop}
+          className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-colors ${
+            dragging
+              ? 'border-accent bg-accent/[0.06]'
+              : 'border-border/60 hover:border-accent/50 hover:bg-accent/[0.02]'
+          }`}
         >
           <input
             ref={fileRef}
@@ -139,8 +187,10 @@ const DocumentUpload = ({ isOpen, onClose }) => {
           ) : (
             <>
               <p className="text-3xl mb-2">📂</p>
-              <p className="text-sm font-bold text-text">Drop file here or click to browse</p>
-              <p className="text-xs text-muted mt-1">PDF · TXT · DOCX · Image · up to 10 MB</p>
+              <p className="text-sm font-bold text-text">
+                {dragging ? 'Release to add' : 'Drop a file or link here, or click to browse'}
+              </p>
+              <p className="text-xs text-muted mt-1">PDF · TXT · DOCX · Image · Link · up to 10 MB</p>
             </>
           )}
         </div>
