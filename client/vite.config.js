@@ -12,7 +12,13 @@ export default defineConfig({
     // Turns the app into an installable PWA (Android/iOS "Add to Home Screen").
     // Generates a service worker (offline precache) + web app manifest.
     VitePWA({
-      registerType: 'prompt',       // new deploy → notify user (toast) instead of silent reload
+      /* autoUpdate, not prompt. Under 'prompt' the new worker sits in `waiting`
+         until the user accepts a toast, so anyone who ignored it kept being
+         served the previous build on every reload — a fix could be deployed and
+         never reach them. The app holds no unsaved client state (messages are
+         persisted server-side), so taking control immediately is safe and means
+         a reload always gets current code. */
+      registerType: 'autoUpdate',
       injectRegister: null,         // we register manually in main.jsx (virtual:pwa-register)
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
@@ -39,6 +45,12 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         navigateFallback: '/index.html',       // SPA: any route falls back to the shell
         navigateFallbackDenylist: [/^\/api/],  // never serve the shell for API paths
+        // Take over from the previous worker on activation instead of waiting
+        // for every tab to close, and drop its precache so no stale asset
+        // survives the upgrade.
+        clientsClaim: true,
+        skipWaiting: true,
+        cleanupOutdatedCaches: true,
       },
       // PWA stays OFF in `npm run dev` so it never interferes with HMR.
       devOptions: { enabled: false },

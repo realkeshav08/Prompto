@@ -43,24 +43,29 @@ createRoot(rootElement).render(
   </StrictMode>
 )
 
-// PWA: when a new version is deployed, prompt the user to reload (instead of
-// silently swapping the service worker mid-session).
-const updateSW = registerSW({
-  onNeedRefresh() {
-    toast(
-      (t) => (
-        <span>
-          A new version is available.{' '}
-          <button
-            onClick={() => { toast.dismiss(t.id); updateSW(true) }}
-            style={{ textDecoration: 'underline', fontWeight: 600 }}
-          >
-            Reload
-          </button>
-        </span>
-      ),
-      { duration: Infinity }
-    )
+/* PWA registration. The worker is built with autoUpdate, so a new deploy
+   installs and claims the page itself — there is no waiting worker to prompt
+   about. `immediate` registers on load rather than after the window settles, so
+   a client on an old build picks the new one up on the very next visit.
+
+   An update swaps the precache under a page that already loaded its assets, so
+   the tab is reloaded once when that happens; without it the running code and
+   the cached bundle can disagree, which is what produced the broken layout. */
+registerSW({
+  immediate: true,
+  onRegisteredSW(_url, registration) {
+    if (!registration) return
+    registration.addEventListener('updatefound', () => {
+      const incoming = registration.installing
+      if (!incoming) return
+      incoming.addEventListener('statechange', () => {
+        // 'activated' with an existing controller means this replaced a previous
+        // worker — a first install has no controller and needs no reload.
+        if (incoming.state === 'activated' && navigator.serviceWorker.controller) {
+          window.location.reload()
+        }
+      })
+    })
   },
   onOfflineReady() {
     toast.success('Ready to work offline')
