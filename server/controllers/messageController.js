@@ -10,7 +10,9 @@ const PYTHON_AI_URL = process.env.PYTHON_AI_URL || "http://localhost:8000";
 // Validates the shared shape of message requests: a chat id plus a non-empty
 // prompt capped at 5000 chars to reject oversized/abusive payloads.
 const messageSchema = z.object({
-  chatId: z.string().min(1),
+  // Reject a malformed id here rather than letting Mongoose raise a CastError
+  // deeper in — that surfaced as a 500, and only after credits had been debited.
+  chatId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid chat id'),
   prompt: z.string().trim().min(1).max(5000),
 });
 
@@ -191,10 +193,14 @@ export const textMessageController = async (req, res) => {
 
     /* ---------- CHAT VALIDATION ---------- */
 
+    // Scoped by userId, so another user's chat is indistinguishable from a
+    // missing one. Answer 404 directly instead of throwing: a wrong id is a
+    // client mistake, not a server fault, and shouldn't be logged as one.
     const chat = await Chat.findOne({ _id: chatId, userId });
 
     if (!chat) {
-      throw new Error("Chat not found or unauthorized");
+      await refundCredits(userId, 1);
+      return res.status(404).json({ success: false, message: 'Chat not found' });
     }
 
     /* ---------- SAVE USER MESSAGE ---------- */
@@ -315,7 +321,10 @@ export const ragMessageController = async (req, res) => {
     }
 
     const chat = await Chat.findOne({ _id: chatId, userId });
-    if (!chat) throw new Error('Chat not found or unauthorized');
+    if (!chat) {
+      await refundCredits(userId, 2);
+      return res.status(404).json({ success: false, message: 'Chat not found' });
+    }
 
     const isFirstMessage = chat.name === 'New Chat' || chat.messages.length === 0;
     if (isFirstMessage) {
@@ -407,7 +416,10 @@ export const imageMessageController = async (req, res) => {
     }
 
     const chat = await Chat.findOne({ _id: chatId, userId });
-    if (!chat) throw new Error("Chat not found");
+    if (!chat) {
+      await refundCredits(userId, 2);
+      return res.status(404).json({ success: false, message: 'Chat not found' });
+    }
 
     // Auto-rename chat from the first prompt. Chats that end up with the same
     // name are still uniquely distinguished by _id and their createdAt/updatedAt
