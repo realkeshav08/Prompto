@@ -7,6 +7,24 @@ import PasswordChecklist from '../components/PasswordChecklist'
 import PasswordInput from '../components/PasswordInput'
 import OtpInput from '../components/OtpInput'
 
+/* Prompt + action shown beneath the form ("New to the platform? Create account").
+   The action is its own block rather than inline text: as one run, a two-word
+   label wraps mid-phrase on narrow screens and reads as "CREATE" / "ACCOUNT" on
+   separate lines. Giving it a line of its own — and forbidding a break inside it
+   — keeps the label intact at every width. */
+const SwitchPrompt = ({ label, action, onAction }) => (
+  <p className="text-[10px] text-muted mt-8 mb-6 text-center font-bold uppercase tracking-wider">
+    {label}
+    <button
+      type="button"
+      onClick={onAction}
+      className="block w-full mt-1.5 whitespace-nowrap text-accent font-black uppercase tracking-wider cursor-pointer hover:underline underline-offset-4 decoration-2"
+    >
+      {action}
+    </button>
+  </p>
+)
+
 const Login = () => {
   const [state, setState] = useState('login')
   const [name, setName] = useState('')
@@ -185,14 +203,14 @@ const Login = () => {
       <div className="fixed bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-accent/5 blur-[100px] rounded-full pointer-events-none" />
 
       {/* Centers the card when it fits; the outer div scrolls when it's taller */}
-      <div className="min-h-screen w-full flex items-center justify-center relative z-10 px-6 py-10">
+      <div className="min-h-screen w-full flex items-center justify-center relative z-10 px-4 sm:px-6 py-8 sm:py-10">
       <form
         ref={formRef}
         onSubmit={isForgot ? handleForgotPassword : verifyMode ? handleVerify : handleSubmit}
         className="
           w-full max-w-[420px]
-          glass rounded-[2.5rem]
-          p-10 md:p-12 shadow-premium
+          glass rounded-[2rem] sm:rounded-[2.5rem]
+          p-6 sm:p-10 md:p-12 shadow-premium
           animate-fade-in relative z-10
         "
       >
@@ -244,7 +262,13 @@ const Login = () => {
               <OtpInput value={verifyCode} onChange={setVerifyCode} autoFocus />
               <p className="text-[10px] text-muted ml-1">
                 Didn't get it?{' '}
-                <span onClick={handleResendVerification} className="text-accent font-bold cursor-pointer hover:underline">Resend code</span>
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  className="whitespace-nowrap text-accent font-bold cursor-pointer hover:underline"
+                >
+                  Resend code
+                </button>
               </p>
             </div>
           )}
@@ -293,25 +317,19 @@ const Login = () => {
 
         {/* Switch mode context */}
         {verifyMode ? (
-          <p className="text-[10px] text-muted mt-8 mb-6 text-center font-bold uppercase tracking-wider">
-            Wrong email?
-            <span onClick={exitVerify}
-              className="text-accent font-black cursor-pointer hover:underline underline-offset-4 decoration-2"> Back to Login</span>
-          </p>
+          <SwitchPrompt label="Wrong email?" action="Back to Login" onAction={exitVerify} />
         ) : !isForgot ? (
-          <p className="text-[10px] text-muted mt-8 mb-6 text-center font-bold uppercase tracking-wider">
-            {state === 'register' ? 'Already part of the community? ' : 'New to the platform? '}
-            <span onClick={() => { setState(state === 'login' ? 'register' : 'login'); setConfirmPassword(''); }}
-              className="text-accent font-black cursor-pointer hover:underline underline-offset-4 decoration-2">
-              {state === 'register' ? 'Sign in' : 'Create account'}
-            </span>
-          </p>
+          <SwitchPrompt
+            label={state === 'register' ? 'Already part of the community?' : 'New to the platform?'}
+            action={state === 'register' ? 'Sign in' : 'Create account'}
+            onAction={() => { setState(state === 'login' ? 'register' : 'login'); setConfirmPassword('') }}
+          />
         ) : (
-          <p className="text-[10px] text-muted mt-8 mb-6 text-center font-bold uppercase tracking-wider">
-            Remembered your password? 
-            <span onClick={() => { setIsForgot(false); setResetStep(1); setOtp(''); setNewPassword(''); setConfirmPassword(''); }}
-              className="text-accent font-black cursor-pointer hover:underline underline-offset-4 decoration-2"> Back to Login</span>
-          </p>
+          <SwitchPrompt
+            label="Remembered your password?"
+            action="Back to Login"
+            onAction={() => { setIsForgot(false); setResetStep(1); setOtp(''); setNewPassword(''); setConfirmPassword('') }}
+          />
         )}
 
         {/* Action Button — the pending label names the step in progress, so a
