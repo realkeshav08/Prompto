@@ -13,23 +13,52 @@ import mongoose from 'mongoose';
 import ai from '../configs/ai.js';
 import dns from 'dns/promises';
 import net from 'net';
+import path from 'path';
 import { isPrivateAddress, isBlockedHostname } from '../utils/network.js';
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /*  MULTER — memory storage (we embed and discard, no disk writes)             */
 /* ─────────────────────────────────────────────────────────────────────────── */
 
+const ALLOWED_MIME = new Set([
+  'application/pdf',
+  'text/plain',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/png', 'image/jpeg', 'image/jpg', 'image/webp',
+]);
+
+// Fallback used when the client sends a generic type. The browser derives the
+// mimetype from the OS, which doesn't always know .docx — Linux and several
+// mobile browsers send application/octet-stream for it — so a perfectly valid
+// upload would be dropped on a technicality. The extension decides in that case,
+// and extractText still dispatches on mimetype, so it is normalised here.
+const EXT_MIME = {
+  '.pdf': 'application/pdf',
+  '.txt': 'text/plain',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+};
+
 export const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
-  fileFilter: (_req, file, cb) => {
-    const allowed = [
-      'application/pdf',
-      'text/plain',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'image/png', 'image/jpeg', 'image/jpg', 'image/webp',
-    ];
-    cb(null, allowed.includes(file.mimetype));
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_MIME.has(file.mimetype)) return cb(null, true);
+
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    if (EXT_MIME[ext]) {
+      file.mimetype = EXT_MIME[ext];
+      return cb(null, true);
+    }
+
+    // Record the rejection instead of throwing: multer would surface a thrown
+    // error as a 500, and the handler otherwise can't tell "no file sent" from
+    // "file sent but refused" — they produced the same misleading message.
+    req.rejectedUpload = file.originalname || 'That file';
+    cb(null, false);
   },
 });
 
@@ -239,6 +268,13 @@ export const uploadDocument = async (req, res) => {
     } else if (req.file) {
       ({ text, fileType } = await extractText(req.file));
       fileName = req.file.originalname;
+    } else if (req.rejectedUpload) {
+      // A file did arrive — it just wasn't a type we can read. Say that, rather
+      // than "provide a file", which reads as though nothing was attached.
+      return res.status(415).json({
+        success: false,
+        message: `"${req.rejectedUpload}" isn't a supported file type. Upload a PDF, TXT, DOCX, or an image.`,
+      });
     } else {
       return res.status(400).json({ success: false, message: 'Provide a file or URL' });
     }
