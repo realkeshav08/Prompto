@@ -124,7 +124,7 @@ export const AppContextProvider = ({ children }) => {
         return
       }
 
-      const { data } = await api.get('/api/chat/create')
+      const { data } = await api.post('/api/chat/create')
 
       if (data.success) {
         setChats(prev => [data.chat, ...prev])

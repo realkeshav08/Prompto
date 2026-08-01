@@ -1,3 +1,17 @@
+# pnpm reads dependency overrides from here, not package.json, since v10.
+
+overrides:
+  # Transitive packages pinned to their patched releases. Each is pulled in by a
+  # dependency that still ranges onto a vulnerable version, so the fix has to be
+  # forced here rather than by bumping the direct dependency.
+  undici: '>=7.28.0'        # TLS verification bypass + SOCKS5 request routing
+  form-data: '>=4.0.6'      # CRLF injection via unescaped multipart boundary
+  axios: '>=1.18.0'         # proxy inherited across interceptor config cloning
+
+# Install does not run these packages' build scripts. Nothing here needs them at
+# runtime — only their JavaScript is consumed — so leaving them unapproved keeps
+# third-party scripts from executing during deploys. Stated explicitly because
+# the placeholder values this file shipped with made every install warn.
 allowBuilds:
-  '@google/genai': set this to true or false
-  protobufjs: set this to true or false
+  '@google/genai': false
+  protobufjs: false

@@ -14,8 +14,21 @@ export const logger = pino({
   level: process.env.LOG_LEVEL || 'info',
   base: undefined, // drop pid/hostname noise; the platform already adds these
   redact: {
-    // Never log credentials or tokens even if an object carrying them is logged.
-    paths: ['req.headers.authorization', 'password', '*.password', 'token', '*.token'],
+    /* Credentials must never reach disk. The cookie entries matter most: the
+       session JWT travels as an httpOnly cookie, so pino-http's request/response
+       header dumps would otherwise write a live 30-day token into the log on
+       every authenticated call — readable by anyone with log or backup access,
+       which undoes the reason the token was moved out of localStorage. */
+    paths: [
+      'req.headers.cookie',
+      'req.headers.authorization',
+      'req.headers["x-internal-key"]',
+      'res.headers["set-cookie"]',
+      'password',
+      '*.password',
+      'token',
+      '*.token',
+    ],
     remove: true,
   },
 });
