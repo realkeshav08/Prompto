@@ -1,4 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Fonts are linked from index.html, not @import-ed here. An @import to a third
+   party sits at the head of the bundle and has to resolve before the rest of
+   this stylesheet is usable, so a slow fonts.googleapis.com response paints the
+   app partially styled — the layout intermittently collapsing on reload. */
 @import "tailwindcss";
 
 /* 
@@ -57,6 +60,15 @@
 @layer base {
   * {
     border-color: var(--color-border);
+  }
+
+  /* Explicit chain down to the mount node. Without it the app's full-height
+     root is the only thing establishing height, so anything that delays it
+     leaves the page collapsed to content height against a bare background. */
+  html,
+  body,
+  #root {
+    height: 100%;
   }
 
   body {

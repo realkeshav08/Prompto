@@ -57,6 +57,15 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
+    <!-- Loaded here rather than @import-ed from index.css: an @import must
+         resolve before the rest of the bundle applies, so a slow font response
+         paints the app half-styled. As its own link it downloads in parallel and
+         only swaps the typeface in when ready. -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+    />
+
     <!-- CSP is set in vercel.json (HTTP header), NOT here — a strict <meta> CSP
          would block Vite's dev hot-reload (inline scripts + eval). -->
 
