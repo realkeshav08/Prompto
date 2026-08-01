@@ -20,7 +20,7 @@ let pendingReloadScroll = (() => {
 const ChatBox = () => {
   const navigate = useNavigate()
   const containerRef = useRef(null)
-  const { selectedChat, setSelectedChat, user, axios, setUser, setChats } = useAppContext()
+  const { selectedChat, setSelectedChat, user, axios, setUser, setChats, chatsLoaded } = useAppContext()
 
   const [messages, setMessages] = useState([])
   const [prompt, setPrompt] = useState('')
@@ -307,7 +307,7 @@ const ChatBox = () => {
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-6 md:px-12 xl:px-32 py-10 space-y-8 scroll-smooth custom-scrollbar"
+        className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-12 xl:px-32 py-6 sm:py-10 space-y-8 scroll-smooth custom-scrollbar"
       >
         {/* Empty state. min-h-full, not h-full: pinning the height to the
             viewport while centring taller content overflows it in both
@@ -315,7 +315,7 @@ const ChatBox = () => {
             back to. Growing past the container instead lets it scroll normally
             — that overflow is what clipped the lower cards once Study AI added
             its source row. */}
-        {messages.length === 0 && (
+        {messages.length === 0 && chatsLoaded && (
           <div className="min-h-full flex flex-col items-center justify-center text-center animate-fade-in max-w-3xl mx-auto">
             <div className="relative mb-6">
               <div className="absolute inset-0 bg-accent/10 blur-2xl rounded-full" />
@@ -403,7 +403,7 @@ const ChatBox = () => {
       </div>
 
       {/* Modern Interaction Area */}
-      <div className="p-6 md:px-12 xl:px-24">
+      <div className="p-3 sm:p-6 md:px-12 xl:px-24">
         {mode === 'image' && (
           <label className="flex items-center gap-3 text-[11px] font-bold text-muted mb-4 px-4 uppercase tracking-widest">
             <input
@@ -416,14 +416,18 @@ const ChatBox = () => {
           </label>
         )}
 
+        {/* Source picker wraps rather than overflowing: as one non-wrapping
+            line, the ml-auto action was pushed past the right edge on a phone
+            and got clipped. Each control keeps its label intact and the row
+            grows to a second line when it has to. */}
         {mode === 'study' && (
-          <div className="flex items-center gap-3 mb-4 px-1">
+          <div className="flex flex-wrap items-center gap-2 mb-3 px-1">
             <span className="text-[11px] font-bold uppercase tracking-widest text-muted">Source:</span>
             {['notes', 'global', 'hybrid'].map(m => (
               <button
                 key={m}
                 onClick={() => setRagMode(m)}
-                className={`px-3 py-1.5 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all ${
+                className={`shrink-0 whitespace-nowrap px-2.5 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors ${
                   ragMode === m
                     ? 'bg-accent text-white shadow-sm'
                     : 'bg-surface/40 text-muted hover:text-text'
@@ -434,7 +438,7 @@ const ChatBox = () => {
             ))}
             <button
               onClick={() => setShowUpload(true)}
-              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-accent/10 text-accent text-[11px] font-bold hover:bg-accent/20 transition-all"
+              className="shrink-0 whitespace-nowrap sm:ml-auto flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-accent/10 text-accent text-[11px] font-bold hover:bg-accent/20 transition-colors"
             >
               📂 Manage Docs
             </button>
@@ -444,20 +448,20 @@ const ChatBox = () => {
         <form
           onSubmit={onSubmit}
           className="
-            relative flex items-end gap-3 p-2.5 
-            glass rounded-[2rem] shadow-premium
+            relative flex items-end gap-2 sm:gap-3 p-2 sm:p-2.5
+            glass rounded-[1.75rem] sm:rounded-[2rem] shadow-premium
             focus-within:border-accent/40 focus-within:ring-4 focus-within:ring-accent/5
             transition-all duration-300
           "
         >
-          <div className="relative group">
+          <div className="relative group shrink-0">
             <select
               value={mode}
               onChange={e => setMode(e.target.value)}
               className="
-                appearance-none bg-accent-soft/50 text-[11px] font-extrabold uppercase tracking-tighter
-                outline-none text-accent px-5 py-3.5 rounded-3xl
-                cursor-pointer hover:bg-accent hover:text-white transition-all duration-200
+                appearance-none bg-accent-soft/50 text-[10px] sm:text-[11px] font-extrabold uppercase tracking-tighter
+                outline-none text-accent px-3 sm:px-5 py-3 sm:py-3.5 rounded-2xl sm:rounded-3xl
+                cursor-pointer hover:bg-accent hover:text-white transition-colors duration-200
               "
             >
               <option value="text">Chat</option>
@@ -475,7 +479,7 @@ const ChatBox = () => {
             }}
             placeholder="Type a prompt..."
             className="
-              flex-1 bg-transparent px-4 py-3.5 text-sm outline-none 
+              flex-1 min-w-0 bg-transparent px-2 sm:px-4 py-3 sm:py-3.5 text-sm outline-none
               placeholder-muted font-medium resize-none max-h-48 custom-scrollbar
             "
             required
@@ -491,7 +495,7 @@ const ChatBox = () => {
           <button
             disabled={loadingChatId !== null || !prompt.trim()}
             className="
-              p-3.5 rounded-full bg-accent text-white shadow-lg
+              shrink-0 p-3 sm:p-3.5 rounded-full bg-accent text-white shadow-lg
               hover:scale-110 active:scale-90 disabled:opacity-30 disabled:scale-100 disabled:bg-muted/20
               transition-all duration-300 group
             "

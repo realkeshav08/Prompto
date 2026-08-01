@@ -47,6 +47,14 @@ export const AppContextProvider = ({ children }) => {
   const [loadingUser, setLoadingUser] = useState(true)
   const [loadingChats, setLoadingChats] = useState(false)
 
+  /* Whether the chat list has been fetched at least once this session.
+     `chats` is [] both before the first fetch and when a user genuinely has no
+     chats, so on its own it can't tell those apart — consumers rendering an
+     "empty" state off it flash that state on every reload before the real list
+     lands. This stays false until the first fetch settles, so callers can show
+     a placeholder until the answer is actually known. */
+  const [chatsLoaded, setChatsLoaded] = useState(false)
+
   /* ---------------- AXIOS INTERCEPTORS ---------------- */
 
   useEffect(() => {
@@ -157,6 +165,9 @@ export const AppContextProvider = ({ children }) => {
       }
     } finally {
       setLoadingChats(false)
+      // Settled either way: a failed fetch must still release the placeholder,
+      // otherwise the UI shows a loading state forever.
+      setChatsLoaded(true)
     }
   }, [createNewChat])
 
@@ -208,6 +219,8 @@ export const AppContextProvider = ({ children }) => {
       setChats([]);
       setSelectedChat(null);
       setLoadingUser(false);
+      // Signed out: the next sign-in must fetch before anything trusts [].
+      setChatsLoaded(false);
     }
   }, [authed, fetchUser]);
 
@@ -241,7 +254,11 @@ export const AppContextProvider = ({ children }) => {
                 setSelectedChat(restored || data.chats[0]);
               }
             }
-          } catch (err) { console.error(err) }
+          } catch (err) {
+            console.error(err)
+          } finally {
+            setChatsLoaded(true)
+          }
         }
         syncOnly();
       }
@@ -357,6 +374,7 @@ export const AppContextProvider = ({ children }) => {
     setAuthed,
     loadingUser,
     loadingChats,
+    chatsLoaded,
     fetchUser,
     fetchUsersChats,
     createNewChat,
@@ -373,6 +391,7 @@ export const AppContextProvider = ({ children }) => {
     setAuthed,
     loadingUser,
     loadingChats,
+    chatsLoaded,
     fetchUser,
     fetchUsersChats,
     createNewChat,

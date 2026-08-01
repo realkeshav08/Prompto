@@ -44,7 +44,8 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
     setChats,
     fetchUsersChats,
     loadMoreChats,
-    chatsCursor
+    chatsCursor,
+    chatsLoaded
   } = useAppContext()
 
   const [search, setSearch] = useState('')
@@ -108,19 +109,27 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
       {/* Mobile backdrop: dims the page and closes the drawer on tap (mobile only) */}
       {isMenuOpen && (
         <div
-          className="md:hidden fixed inset-0 bg-black/50 z-40"
+          className="xl:hidden fixed inset-0 bg-black/50 z-40"
           onClick={() => setIsMenuOpen(false)}
           aria-hidden="true"
         />
       )}
+      {/* h-dvh, not h-screen: 100vh on mobile reports the viewport as if the
+          browser chrome were hidden, so the footer sat underneath the toolbar
+          and was unreachable. dvh tracks the actually-visible height.
+          The bg override is deliberate — `glass` is translucent by design,
+          which reads as depth for a desktop panel but lets the chat show
+          through a full-height mobile drawer. It's declared outside Tailwind's
+          layers, so a plain utility loses to it and the override must win. */}
       <aside
         className={`
-          h-screen w-80 max-w-[85vw] flex flex-col
+          h-dvh w-80 max-w-[85vw] flex flex-col
           glass border-r
           px-6 py-8
-          transition-all duration-500 ease-in-out
-          max-md:fixed max-md:inset-y-0 max-md:left-0 z-50
-          ${!isMenuOpen && 'max-md:-translate-x-full'}
+          transition-transform duration-500 ease-in-out
+          max-xl:fixed max-xl:inset-y-0 max-xl:left-0 z-50
+          max-xl:bg-bg!
+          ${!isMenuOpen && 'max-xl:-translate-x-full'}
         `}
       >
         {/* 1. Header Section (Fixed) */}
@@ -190,7 +199,16 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
 
       {/* 2. History List (Scrollable) */}
       <div className="flex-1 min-h-0 overflow-y-auto pr-2 -mr-2 custom-scrollbar space-y-3 relative mb-6">
-        {chats.length === 0 ? (
+        {!chatsLoaded ? (
+          /* Placeholder rows until the first fetch settles. Rendering the
+             "no sessions" copy here instead would assert something we don't
+             know yet, and it visibly flashes before the list arrives. */
+          <div className="space-y-3 animate-pulse" aria-hidden="true">
+            {[0, 1, 2, 3].map(i => (
+              <div key={i} className="h-16 rounded-2xl bg-accent-soft/20" />
+            ))}
+          </div>
+        ) : chats.length === 0 ? (
           <div className="h-40 flex flex-col items-center justify-center text-center px-4 animate-fade-in">
             <div className="w-12 h-12 bg-accent/5 rounded-full flex items-center justify-center mb-4">
               <img src={assets.logo} className="w-5 opacity-20 invert dark:invert-0" alt="logo" />
@@ -398,7 +416,7 @@ function Sidebar({ isMenuOpen, setIsMenuOpen }) {
         <button
           onClick={() => setIsMenuOpen(false)}
           className="
-            md:hidden
+            xl:hidden
             absolute top-8 right-8
             p-3 rounded-2xl bg-accent-soft
           "

@@ -46,7 +46,7 @@ const App = () => {
   }
 
   return (
-    <div className="h-screen w-screen bg-bg text-text overflow-hidden relative">
+    <div className="h-dvh w-screen bg-bg text-text overflow-hidden relative">
       <Toaster />
 
       {/* Global Background Decorations */}
@@ -60,7 +60,7 @@ const App = () => {
           src={assets.menu_icon}
           onClick={() => setIsMenuOpen(true)}
           className="
-            md:hidden
+            xl:hidden
             absolute top-6 right-6 z-30
             w-8 h-8
             cursor-pointer

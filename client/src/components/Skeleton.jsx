@@ -33,7 +33,7 @@ const Skeleton = ({ variant = 'full' }) => {
 
   return (
     <div
-      className="h-screen w-screen flex bg-bg text-text overflow-hidden"
+      className="h-dvh w-screen flex bg-bg text-text overflow-hidden"
       role="status"
       aria-label="Loading workspace"
     >

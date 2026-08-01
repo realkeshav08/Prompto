@@ -197,13 +197,13 @@ const Login = () => {
   }
 
   return (
-    <div className="h-screen w-full overflow-y-auto overflow-x-hidden bg-bg text-text">
+    <div className="h-dvh w-full overflow-y-auto overflow-x-hidden bg-bg text-text">
       {/* Fixed ambient background — stays put and never adds scroll height */}
       <div className="fixed top-[-10%] right-[-10%] w-[600px] h-[600px] bg-accent/10 blur-[130px] rounded-full pointer-events-none" />
       <div className="fixed bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-accent/5 blur-[100px] rounded-full pointer-events-none" />
 
       {/* Centers the card when it fits; the outer div scrolls when it's taller */}
-      <div className="min-h-screen w-full flex items-center justify-center relative z-10 px-4 sm:px-6 py-8 sm:py-10">
+      <div className="min-h-dvh w-full flex items-center justify-center relative z-10 px-4 sm:px-6 py-8 sm:py-10">
       <form
         ref={formRef}
         onSubmit={isForgot ? handleForgotPassword : verifyMode ? handleVerify : handleSubmit}
