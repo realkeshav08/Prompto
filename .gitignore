@@ -1,0 +1,58 @@
+# ---------------- Dependencies ----------------
+node_modules/
+**/node_modules/
+
+# ---------------- Environment & secrets ----------------
+# Ignore every .env variant (.env, .env.local, .env.production, ...)
+# but always keep the committed .env.example templates.
+**/.env
+**/.env.*
+!**/.env.example
+
+# Never commit TLS certificates or private keys
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# ---------------- Build output ----------------
+dist/
+build/
+**/dist/
+**/build/
+
+# ---------------- Python ----------------
+**/__pycache__/
+*.pyc
+*.pyo
+**/venv/
+**/.venv/
+
+# ---------------- Logs ----------------
+logs/
+**/logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---------------- Local / workspace ----------------
+Trash/
+repo_tree.txt
+download.png
+package-lock.json
+notes/
+memory/
+.gemini/
+.antigravity/
+.claude/
+*.local
+
+# ---------------- OS & Editor ----------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.sw?

@@ -1,0 +1,407 @@
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import axios from 'axios'
+import toast from 'react-hot-toast'
+import { AppContext } from './context'
+
+/* ---------------- AXIOS INSTANCE ---------------- */
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_SERVER_URL,
+  withCredentials: true,
+  // Global cap so no request can hang the UI forever if the backend is
+  // cold-starting or unreachable. Long AI/upload calls override this.
+  timeout: 120000,
+})
+
+// Production-safe logging
+const logger = {
+  log: (...args) => { if (import.meta.env.DEV) console.log(...args) },
+  warn: (...args) => { if (import.meta.env.DEV) console.warn(...args) },
+  error: (...args) => console.error(...args) // Always log errors
+}
+
+export const AppContextProvider = ({ children }) => {
+  const navigate = useNavigate()
+
+  const [user, setUser] = useState(null)
+  const [chats, setChats] = useState([])
+  const [selectedChat, setSelectedChat] = useState(null)
+  // Cursor for paginated chat history. Non-null ⇒ older sessions remain to load.
+  const [chatsCursor, setChatsCursor] = useState(null)
+
+  const [theme, setTheme] = useState(
+    localStorage.getItem('theme') || 'dark'
+  )
+
+  // The JWT is no longer kept in JS — it lives in an httpOnly cookie sent
+  // automatically via withCredentials. This flag only remembers "this browser
+  // has an active session" so we know whether to bootstrap / show the splash.
+  const [authed, setAuthedState] = useState(() => localStorage.getItem('authed') === '1')
+  const setAuthed = useCallback((val) => {
+    setAuthedState(!!val)
+    if (val) localStorage.setItem('authed', '1')
+    else localStorage.removeItem('authed')
+  }, [])
+
+  const [loadingUser, setLoadingUser] = useState(true)
+  const [loadingChats, setLoadingChats] = useState(false)
+
+  /* Whether the chat list has been fetched at least once this session.
+     `chats` is [] both before the first fetch and when a user genuinely has no
+     chats, so on its own it can't tell those apart — consumers rendering an
+     "empty" state off it flash that state on every reload before the real list
+     lands. This stays false until the first fetch settles, so callers can show
+     a placeholder until the answer is actually known. */
+  const [chatsLoaded, setChatsLoaded] = useState(false)
+
+  /* ---------------- AXIOS INTERCEPTORS ---------------- */
+
+  useEffect(() => {
+    // Auth travels in the httpOnly cookie (withCredentials), so there is no
+    // request interceptor adding a Bearer header anymore. We only watch
+    // responses to react to an expired/invalid session.
+    const resInterceptor = api.interceptors.response.use(
+      response => response,
+      error => {
+        if (error.response?.status === 401) {
+          logger.warn("🚫 Session expired or invalid");
+          setAuthed(false)
+          setUser(null)
+        }
+        return Promise.reject(error)
+      }
+    )
+
+    return () => {
+      api.interceptors.response.eject(resInterceptor)
+    }
+  }, [setAuthed])
+
+  /* ---------------- USER ---------------- */
+
+  // silent = background refresh (e.g. after payment / "Sync Balance"):
+  // updates `user` WITHOUT toggling loadingUser, so it never re-triggers the
+  // boot splash gate — which would unmount/remount the caller in a loop.
+  const fetchUser = useCallback(async ({ silent = false } = {}) => {
+    try {
+      if (!silent) setLoadingUser(true)
+      // Timeout so a cold-starting backend can't hang the boot screen forever.
+      const { data } = await api.get('/api/user/data', { timeout: 75000 })
+
+      if (data.success) {
+        setUser(data.user)
+      } else if (!silent) {
+        toast.error(data.message)
+        setUser(null)
+      }
+    } catch (err) {
+      // On a silent refresh, errors are non-fatal — keep the current user.
+      if (!silent) {
+        if (err.response?.status !== 401) {
+          toast.error(err.response?.data?.message || err.message)
+        }
+        setUser(null)
+      }
+    } finally {
+      if (!silent) setLoadingUser(false)
+    }
+  }, [])
+
+  /* ---------------- CHATS ---------------- */
+
+  const createNewChat = useCallback(async (silent = false) => {
+    // 🛡️ Guard: If the current chat is already empty, don't create a new one
+    if (selectedChat && (!selectedChat.messages || selectedChat.messages.length === 0)) {
+      logger.log("⚠️ Already on an empty session, skipping creation");
+      navigate('/')
+      return;
+    }
+
+    try {
+      if (!user) {
+        if (!silent) toast('Login to create a new chat')
+        return
+      }
+
+      const { data } = await api.post('/api/chat/create')
+
+      if (data.success) {
+        setChats(prev => [data.chat, ...prev])
+        setSelectedChat(data.chat)
+        navigate('/')
+        if (!silent) toast.success('New session started')
+      }
+    } catch (err) {
+      if (err.response?.status !== 401) {
+        toast.error(err.response?.data?.message || err.message)
+      }
+    }
+  }, [user, navigate, selectedChat])
+
+  const fetchUsersChats = useCallback(async () => {
+    try {
+      setLoadingChats(true)
+      const { data } = await api.get('/api/chat/get')
+
+      if (!data.success) {
+        toast.error(data.message)
+        return
+      }
+
+      if (data.chats.length === 0) {
+        setChatsCursor(null)
+        await createNewChat(true)
+        return
+      }
+
+      setChats(data.chats || [])
+      setChatsCursor(data.nextCursor ?? null)
+      // Always start with a new chat upon login/boot as requested
+      await createNewChat(true)
+    } catch (err) {
+      if (err.response?.status !== 401) {
+        toast.error(err.response?.data?.message || err.message)
+      }
+    } finally {
+      setLoadingChats(false)
+      // Settled either way: a failed fetch must still release the placeholder,
+      // otherwise the UI shows a loading state forever.
+      setChatsLoaded(true)
+    }
+  }, [createNewChat])
+
+  // Fetch the next page of older sessions and append them (de-duplicated).
+  const loadMoreChats = useCallback(async () => {
+    if (!chatsCursor) return
+    try {
+      const { data } = await api.get('/api/chat/get', { params: { cursor: chatsCursor } })
+      if (data.success) {
+        setChats(prev => {
+          const seen = new Set(prev.map(c => c?._id))
+          return [...prev, ...(data.chats || []).filter(c => c && !seen.has(c._id))]
+        })
+        setChatsCursor(data.nextCursor ?? null)
+      }
+    } catch (err) {
+      if (err.response?.status !== 401) {
+        toast.error(err.response?.data?.message || err.message)
+      }
+    }
+  }, [chatsCursor])
+
+  /* ---------------- THEME ---------------- */
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  /* ---------------- REMEMBER SELECTED CHAT ---------------- */
+  // Persist the open chat so a page reload restores the same session.
+  useEffect(() => {
+    if (selectedChat?._id) {
+      sessionStorage.setItem('promptoSelectedChat', selectedChat._id)
+    }
+  }, [selectedChat])
+
+  /* ---------------- BOOTSTRAP ---------------- */
+
+  useEffect(() => {
+    if (authed) {
+      logger.log("🔐 Session flag set, bootstrapping...");
+      // Intentional: kick off the auth bootstrap loader on mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      fetchUser();
+    } else {
+      logger.log("🚫 Not authed, reset state");
+      setUser(null);
+      setChats([]);
+      setSelectedChat(null);
+      setLoadingUser(false);
+      // Signed out: the next sign-in must fetch before anything trusts [].
+      setChatsLoaded(false);
+    }
+  }, [authed, fetchUser]);
+
+  useEffect(() => {
+    if (user) {
+      const hasAutoCreated = sessionStorage.getItem('hasAutoCreatedFirstChat');
+      
+      if (!hasAutoCreated) {
+        logger.log("👤 First Login - Creating New Chat");
+        sessionStorage.setItem('hasAutoCreatedFirstChat', 'true');
+        // Intentional: load the user's chats once on first sign-in.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        fetchUsersChats(); // This will trigger createNewChat in its logic
+      } else {
+        logger.log("👤 Refresh/Return - Syncing Chats only");
+        // For refreshes, we just fetch chats without forcing a new one
+        const syncOnly = async () => {
+          try {
+            const { data } = await api.get('/api/chat/get')
+            if (data.success) {
+              setChats(data.chats || [])
+              setChatsCursor(data.nextCursor ?? null)
+
+              // 🛡️ Ensure we always have a selected chat if on home page.
+              // Restore the chat the user had open before the reload.
+              if (data.chats?.length === 0) {
+                createNewChat(true);
+              } else if (!selectedChat) {
+                const savedId = sessionStorage.getItem('promptoSelectedChat');
+                const restored = savedId && data.chats.find(c => c._id === savedId);
+                setSelectedChat(restored || data.chats[0]);
+              }
+            }
+          } catch (err) {
+            console.error(err)
+          } finally {
+            setChatsLoaded(true)
+          }
+        }
+        syncOnly();
+      }
+    }
+    // Keyed on the user's ID so this runs ONCE per signed-in user — not on
+    // every chat switch (which refetched the chat list and raced with the
+    // empty-chat cleanup, re-adding deleted sessions) and not on every credit
+    // change (the `user` object reference changes when credits update).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?._id]);
+
+  const prevSelectedId = useRef(null);
+
+  useEffect(() => {
+    const cleanup = async () => {
+      const prevId = prevSelectedId.current;
+      // If we switched AWAY from a chat that was empty, delete it
+      if (prevId && (!selectedChat || selectedChat._id !== prevId)) {
+        const chatToDelete = chats.find(c => c._id === prevId);
+        if (chatToDelete && (!chatToDelete.messages || chatToDelete.messages.length === 0)) {
+          logger.log("🧹 Auto-cleaning empty chat:", prevId);
+          try {
+            // onlyIfEmpty: server atomically deletes only if messages array is
+            // still empty — races against a parallel send in another tab can
+            // never wipe a real conversation.
+            await api.post('/api/chat/delete', { chatId: prevId, onlyIfEmpty: true });
+            setChats(prev => prev.filter(c => c._id !== prevId));
+          } catch (err) {
+            console.error("Cleanup failed:", err);
+          }
+        }
+      }
+      prevSelectedId.current = selectedChat?._id;
+    };
+
+    cleanup();
+  }, [selectedChat, chats]);
+
+  useEffect(() => {
+    if (selectedChat && !chats.some(c => c._id === selectedChat._id)) {
+      // Intentional: clear the selection when its chat disappears from the list.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelectedChat(null);
+    }
+  }, [chats, selectedChat]);
+
+  /* ---------------- KEEP SELECTED CHAT FRESH ---------------- */
+  // The chats list is the source of truth for a chat's messages. A chat
+  // object created via createNewChat starts with messages: [] and is never
+  // re-synced — so selectedChat would hold a stale empty snapshot. If any
+  // effect then reloads the view from selectedChat, the open conversation
+  // gets wiped and it looks like a brand-new session opened. Mirroring the
+  // live chats entry into selectedChat keeps it always current.
+  useEffect(() => {
+    if (!selectedChat?._id) return;
+    const fresh = chats.find(c => c._id === selectedChat._id);
+    if (fresh && fresh !== selectedChat) {
+      // Intentional: mirror the live chats entry so selectedChat never goes stale.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelectedChat(fresh);
+    }
+  }, [chats, selectedChat]);
+
+  /* ---------------- TAB-CLOSE CLEANUP ----------------
+     sessionStorage is per-tab, so every fresh tab triggers the auto-create
+     branch and spawns an empty "New Chat". If the user closes the tab without
+     sending anything, that placeholder would otherwise stay in the DB and pile
+     up over multiple opens. On `pagehide` we fire a one-shot conditional
+     delete using fetch's `keepalive` flag (the only browser API that lets us
+     send a POST with the Authorization header AFTER the page is unloading).
+     The server-side `onlyIfEmpty` guard means this can never delete a chat
+     that has any messages — including one whose first message landed in the
+     same browser via another tab.                                            */
+  useEffect(() => {
+    if (!authed) return;
+    const handler = () => {
+      const chatId = selectedChat?._id;
+      if (!chatId) return;
+      const chat = chats.find(c => c._id === chatId);
+      if (!chat) return;
+      if (chat.messages && chat.messages.length > 0) return;
+      try {
+        // credentials:'include' sends the httpOnly auth cookie with the
+        // keepalive request (the header-based token is gone).
+        fetch(`${import.meta.env.VITE_SERVER_URL}/api/chat/delete`, {
+          method: 'POST',
+          keepalive: true,
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ chatId, onlyIfEmpty: true }),
+        });
+      } catch { /* fire-and-forget; cleanup is best-effort */ }
+    };
+    window.addEventListener('pagehide', handler);
+    return () => window.removeEventListener('pagehide', handler);
+  }, [selectedChat, chats, authed]);
+
+  /* ---------------- CONTEXT VALUE ---------------- */
+
+  const value = useMemo(() => ({
+    navigate,
+    user,
+    setUser,
+    chats,
+    setChats,
+    selectedChat,
+    setSelectedChat,
+    theme,
+    setTheme,
+    authed,
+    setAuthed,
+    loadingUser,
+    loadingChats,
+    chatsLoaded,
+    fetchUser,
+    fetchUsersChats,
+    createNewChat,
+    loadMoreChats,
+    chatsCursor,
+    axios: api // ⭐ Use the specialized instance
+  }), [
+    navigate,
+    user,
+    chats,
+    selectedChat,
+    theme,
+    authed,
+    setAuthed,
+    loadingUser,
+    loadingChats,
+    chatsLoaded,
+    fetchUser,
+    fetchUsersChats,
+    createNewChat,
+    loadMoreChats,
+    chatsCursor
+  ])
+
+  return (
+    <AppContext.Provider value={value}>
+      {children}
+    </AppContext.Provider>
+  )
+}

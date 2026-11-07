@@ -1,0 +1,43 @@
+name: Client CI
+
+# Temporarily manual-only while reviewing the compromised client build configuration.
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      # npm ci installs EXACTLY from package-lock.json (reproducible, fails on mismatch).
+      - name: Install dependencies
+        run: npm ci
+
+      # Fails on any high/critical advisory that isn't explicitly allowlisted in
+      # the script, with a reason and a review date. Plain `npm audit` can't
+      # distinguish an advisory that is unreachable in this app from a real one,
+      # and lowering the whole gate to get past one would hide the next real one.
+      - name: Security audit
+        run: node scripts/audit-check.mjs
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test:run
+
+      - name: Build
+        run: npm run build
