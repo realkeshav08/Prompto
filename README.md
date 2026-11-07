@@ -118,8 +118,11 @@ Things that were less obvious than they looked:
 Both backend services run on one VPS under PM2, behind Nginx with a Let's
 Encrypt certificate and Cloudflare in front. The frontend deploys to Vercel.
 
-See [`deploy/AZURE_DEPLOY.md`](deploy/AZURE_DEPLOY.md) for a step-by-step setup;
-`deploy/setup.sh` provisions a fresh Ubuntu box and is safe to re-run.
+[`deploy/AZURE_DEPLOY.md`](deploy/AZURE_DEPLOY.md) is archived context, not a
+deployment runbook. The former `deploy/setup.sh` was removed because it piped
+downloaded and generated commands into a shell. Do not fetch or run it from an
+old commit or raw GitHub URL. Provision a clean host using a separately reviewed
+procedure and rotated credentials.
 
 Worth knowing: `/health` returns 503 when the database is unreachable, the server
 drains in-flight requests on `SIGTERM`, and Atlas Network Access is per-IP — a new

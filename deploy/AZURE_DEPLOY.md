@@ -1,17 +1,22 @@
-# Deploying Prompto (backend + Python AI service) to a single Azure VM
+# Archived Azure deployment notes (not an executable runbook)
+
+The former `deploy/setup.sh` has been removed because it executed downloaded
+and generated shell commands. Do not fetch or run it from old commits or raw
+GitHub URLs. These notes describe the previous architecture; use a separately
+reviewed procedure and rotated credentials for any new deployment.
 
 A lift-and-shift of the DigitalOcean setup onto one Azure Linux VM:
 **Nginx (SSL) → Node backend `:3001`**, with the **Python AI service private on
 `127.0.0.1:8000`** and **Redis local on `:6379`**. MongoDB Atlas and Gemini stay
 external. Frontend stays on Vercel.
 
-Legend: 👤 = you do it (Azure portal / DNS / secrets) · 🤖 = the `setup.sh` script does it.
+The steps below are historical context and must not be followed as an automated setup.
 
 ---
 
 ## 0. Before you start
-- Keep credits alive: **B1s** VM (1 vCPU / 1 GB) + a 2 GB swap file (the script
-  adds it) is ~\$8/mo → your \$100 student credit lasts ~12 months. Bump to
+- Keep credits alive: **B1s** VM (1 vCPU / 1 GB) with a separately provisioned
+  2 GB swap file was the previous sizing plan. Bump to
   **B1ms** (2 GB) later if you see the Python service getting OOM-restarted.
 - Have ready: MongoDB Atlas URI, Gemini API key, ImageKit keys, Stripe keys,
   a **Resend API key**, and a strong `INTERNAL_API_KEY` (same string in both services).
@@ -51,27 +56,17 @@ Add/repoint an **A record** for your API subdomain (e.g.
 **Cloudflare users:** set it to **DNS only (grey cloud)** for now — you'll flip it
 back to proxied after the SSL cert is issued (step 7).
 
-## 5. 👤 SSH in and run the provisioner
-```bash
-ssh -i /path/to/key.pem keshav@<VM_PUBLIC_IP>
+## 5. Provision a clean host using a reviewed procedure
+Install Node, pnpm, Python, Redis, and Nginx from trusted sources. Check out only
+a verified current commit with Git hooks disabled. Inspect dependency install
+hooks before installing packages; do not pipe downloaded scripts or generated
+commands into a shell. This archived document does not automate provisioning.
 
-# on the VM:
-export REPO_URL="https://github.com/realkeshav08/Prompto.git"   # SSH URL if private
-curl -fsSL https://raw.githubusercontent.com/realkeshav08/Prompto/main/deploy/setup.sh -o setup.sh
-# (or: git clone the repo first, then `bash deploy/setup.sh`)
-bash setup.sh
-```
-🤖 The script installs Node 22, pnpm, PM2, Python venv, Redis, Nginx, certbot deps,
-adds swap, clones the repo, installs all dependencies, then **stops** and creates
-empty `.env` files for you to fill in.
-
-## 6. 👤 Fill in the secrets, then re-run
-```bash
-cd ~/apps/Prompto
-nano server/.env
-nano python-service/.env
-bash deploy/setup.sh        # re-run: this time it starts everything
-```
+## 6. Configure rotated secrets and start the reviewed services
+Create `server/.env` and `python-service/.env` on the clean host using a secure
+channel after rotating any credentials that were available to the compromised
+laptop. Verify the PM2 configuration and network policy before starting either
+service.
 **`server/.env` must include (in addition to your API keys):**
 ```
 PORT=3001
@@ -93,8 +88,8 @@ is not optional — PM2 sets it too, but the file should agree.
 MONGODB_DB_NAME=quickgpt
 INTERNAL_API_KEY=<same-long-random-string-as-server>
 ```
-🤖 Re-running starts both services under PM2, enables reboot-persistence, and
-installs the Nginx site.
+Start services and configure boot persistence only after reviewing the exact
+commands and validating that the Python service stays bound to loopback.
 
 ## 7. 👤 + 🤖 Get HTTPS
 ```bash
@@ -122,8 +117,8 @@ curl -s https://prompto-api.<domain>/   # backend via nginx+SSL
 ## Day-2 operations
 | Task | Command (on the VM, in `~/apps/Prompto`) |
 |---|---|
-| Deploy new code | `git pull && cd server && pnpm install --prod && cd .. && pm2 reload deploy/ecosystem.config.cjs` |
-| Update Python deps | `python-service/venv/bin/pip install -r python-service/requirements.txt && pm2 reload prompto-python` |
+| Deploy new code | Review and pin the new commit, inspect install hooks, then deploy through the approved release procedure. |
+| Update Python deps | Review the pinned requirements and install on a clean host before reloading the service. |
 | Logs | `pm2 logs prompto-backend` / `pm2 logs prompto-python` |
 | Restart one service | `pm2 restart prompto-backend` |
 | Save credits (pause) | Azure portal → VM → **Stop (deallocate)**; compute billing stops, only the tiny disk cost remains |
@@ -133,4 +128,4 @@ curl -s https://prompto-api.<domain>/   # backend via nginx+SSL
   opened in the NSG, so it's only reachable from the backend on the same box —
   this satisfies the "firewall port 8000" item in `PENDING_PYTHON_SERVICE.md`.
 - **Redis is local & free** here; `REDIS_URL` makes rate limiting shared/persistent.
-- Never hand-edit tracked files on the VM — edit locally, push, `git pull` on the VM.
+- Never hand-edit tracked files on the VM; deploy a reviewed commit rather than pulling blindly.
