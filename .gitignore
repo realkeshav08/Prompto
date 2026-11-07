@@ -5,8 +5,6 @@ node_modules/
 # ---------------- Environment & secrets ----------------
 # Ignore every .env variant (.env, .env.local, .env.production, ...)
 # but always keep the committed .env.example templates.
-**/.env
-**/.env.*
 !**/.env.example
 
 # Never commit TLS certificates or private keys
@@ -52,10 +50,10 @@ memory/
 # ---------------- OS & Editor ----------------
 .DS_Store
 Thumbs.db
-.vscode/
 .idea/
 *.suo
 *.sw?
 branch_structure.json
 temp_auto_push.bat
 temp_interactive_push.bat
+config.bat
